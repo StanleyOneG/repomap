@@ -25,6 +25,9 @@ tree-sitter-languages = "^1.10.2"
 python-dotenv = "^1.0.1"
 
 
+[tool.poetry.scripts]
+repomap = "repomap.cli:main"
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
