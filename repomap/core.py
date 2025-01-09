@@ -54,7 +54,7 @@ class GitLabFetcher:
         except Exception as e:
             raise ValueError(f"Invalid repository URL: {str(e)}")
 
-    def fetch_repo_structure(self, repo_url: str, ref: str = "main") -> Dict:
+    def fetch_repo_structure(self, repo_url: str, ref: Optional[str] = None) -> Dict:
         """Fetch repository structure from GitLab.
         
         Args:
@@ -82,24 +82,48 @@ class GitLabFetcher:
                 except gitlab.exceptions.GitlabGetError:
                     raise gitlab.exceptions.GitlabGetError(f"Project not found: {project_path}")
             
+            # Use provided ref or get default branch from project
+            if not ref:
+                ref = project.default_branch
+
+            if not ref:
+                raise gitlab.exceptions.GitlabError("Repository appears to be empty (no default branch)")
+
             # Get repository tree recursively
             items = []
             page = 1
+            per_page = 100
+            max_pages = 100  # Safety limit
             
-            while True:
-                batch = project.repository_tree(
-                    ref=ref,
-                    recursive=True,
-                    all=True,
-                    per_page=100,
-                    page=page
-                )
-                
-                if not batch:
-                    break
+            try:
+                while page <= max_pages:
+                    batch = project.repository_tree(
+                        ref=ref,
+                        recursive=True,
+                        per_page=per_page,
+                        page=page
+                    )
                     
-                items.extend(batch)
-                page += 1
+                    if not batch:
+                        break
+                        
+                    items.extend(batch)
+                    
+                    # If we got fewer items than per_page, we've hit the last page
+                    if len(batch) < per_page:
+                        break
+                        
+                    page += 1
+                    
+                if page > max_pages:
+                    logger.warning(f"Reached maximum page limit ({max_pages}), repository may be truncated")
+            except gitlab.exceptions.GitlabError as e:
+                if "Tree Not Found" in str(e):
+                    raise gitlab.exceptions.GitlabError(f"Repository branch '{ref}' not found or is empty")
+                raise
+
+            if not items:
+                raise gitlab.exceptions.GitlabError("Repository is empty")
 
             # Convert flat list to nested dictionary structure
             root = {}

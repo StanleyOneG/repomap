@@ -45,9 +45,10 @@ def test_get_project_parts():
 @patch('gitlab.Gitlab')
 def test_fetch_repo_structure(mock_gitlab):
     """Test repository structure fetching."""
-    # Setup mock project with path_with_namespace
+    # Setup mock project with path_with_namespace and default branch
     mock_project = Mock()
     mock_project.path_with_namespace = "user/repo"
+    mock_project.default_branch = "main"
     mock_project.repository_tree.side_effect = [
         [
             {
@@ -88,16 +89,8 @@ def test_fetch_repo_structure(mock_gitlab):
         unittest.mock.call(
             ref='main',
             recursive=True,
-            all=True,
             per_page=100,
             page=1
-        ),
-        unittest.mock.call(
-            ref='main',
-            recursive=True,
-            all=True,
-            per_page=100,
-            page=2
         )
     ]
     mock_project.repository_tree.assert_has_calls(expected_calls)
