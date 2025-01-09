@@ -2,8 +2,8 @@
 
 from typing import Dict, List, Optional
 import logging
-import requests
-from urllib.parse import urlparse
+import gitlab
+from urllib.parse import urlparse, quote
 
 logger = logging.getLogger(__name__)
 
@@ -19,18 +19,16 @@ class GitLabFetcher:
         """
         self.base_url = base_url.rstrip('/')
         self.token = token
-        self.session = requests.Session()
-        if token:
-            self.session.headers.update({'PRIVATE-TOKEN': token})
+        self.gl = gitlab.Gitlab(self.base_url, private_token=token)
 
-    def _get_project_id(self, repo_url: str) -> str:
-        """Extract project ID from repository URL.
+    def _get_project_parts(self, repo_url: str) -> tuple[str, str]:
+        """Extract group and project name from repository URL.
         
         Args:
             repo_url (str): GitLab repository URL
             
         Returns:
-            str: Project ID or path
+            tuple[str, str]: Group name and project name
             
         Raises:
             ValueError: If URL is invalid or not a repository URL
@@ -43,12 +41,15 @@ class GitLabFetcher:
             path = parsed.path.strip('/')
             path_parts = path.split('/')
             
-            # GitLab repository URLs must have at least user/repo format
+            # GitLab repository URLs must have at least group/repo format
             if len(path_parts) < 2:
-                raise ValueError("Invalid repository URL: must be in format 'user/repo' or 'group/subgroup/repo'")
-                
-            # Return the path as-is, URL encoding will be handled by requests
-            return path
+                raise ValueError("Invalid repository URL: must be in format 'group/repo' or 'group/subgroup/repo'")
+            
+            # Last part is the project name, everything before is the group path
+            project_name = path_parts[-1]
+            group_path = '/'.join(path_parts[:-1])
+            
+            return group_path, project_name
             
         except Exception as e:
             raise ValueError(f"Invalid repository URL: {str(e)}")
@@ -64,32 +65,36 @@ class GitLabFetcher:
             Dict: Repository structure as nested dictionary
             
         Raises:
-            requests.exceptions.RequestException: If API request fails
+            gitlab.exceptions.GitlabError: If API request fails
             ValueError: If repository URL is invalid
         """
-        project_id = self._get_project_id(repo_url)
-        
         try:
+            group_path, project_name = self._get_project_parts(repo_url)
+            # Get project instance using the full path
+            project_path = f"{group_path}/{project_name}"
+            try:
+                project = self.gl.projects.get(project_path)
+            except gitlab.exceptions.GitlabGetError:
+                # If direct path fails, try with URL encoding
+                encoded_path = quote(project_path, safe='')
+                try:
+                    project = self.gl.projects.get(encoded_path)
+                except gitlab.exceptions.GitlabGetError:
+                    raise gitlab.exceptions.GitlabGetError(f"Project not found: {project_path}")
+            
             # Get repository tree recursively
-            # URL encode the project ID for the API request
-            from urllib.parse import quote
-            encoded_project_id = quote(project_id, safe='')
-            url = f"{self.base_url}/api/v4/projects/{encoded_project_id}/repository/tree"
             items = []
             page = 1
             
             while True:
-                params = {
-                    'ref': ref,
-                    'recursive': True,
-                    'per_page': 100,
-                    'page': page
-                }
+                batch = project.repository_tree(
+                    ref=ref,
+                    recursive=True,
+                    all=True,
+                    per_page=100,
+                    page=page
+                )
                 
-                response = self.session.get(url, params=params)
-                response.raise_for_status()
-                
-                batch = response.json()
                 if not batch:
                     break
                     
@@ -112,7 +117,7 @@ class GitLabFetcher:
 
             return root
 
-        except requests.exceptions.RequestException as e:
+        except gitlab.exceptions.GitlabError as e:
             logger.error(f"Failed to fetch repository structure: {e}")
             raise
 

@@ -3,7 +3,7 @@
 import pytest
 import unittest
 from unittest.mock import Mock, patch
-import requests
+import gitlab
 
 from repomap.core import GitLabFetcher, fetch_repo_structure
 
@@ -23,52 +23,55 @@ def test_gitlab_fetcher_init():
     fetcher = GitLabFetcher("https://custom.gitlab.com/")
     assert fetcher.base_url == "https://custom.gitlab.com"
 
-def test_get_project_id():
-    """Test project ID extraction from URL."""
+def test_get_project_parts():
+    """Test project parts extraction from URL."""
     fetcher = GitLabFetcher()
     
     # Test valid URLs
-    assert fetcher._get_project_id("https://git-testing.devsec.astralinux.ru/user/repo") == "user/repo"
-    assert fetcher._get_project_id("https://git-testing.devsec.astralinux.ru/group/subgroup/repo") == "group/subgroup/repo"
+    group, project = fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru/user/repo")
+    assert group == "user"
+    assert project == "repo"
+    
+    group, project = fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru/group/subgroup/repo")
+    assert group == "group/subgroup"
+    assert project == "repo"
     
     # Test invalid URLs
     with pytest.raises(ValueError):
-        fetcher._get_project_id("https://git-testing.devsec.astralinux.ru")
+        fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru")
     with pytest.raises(ValueError):
-        fetcher._get_project_id("invalid-url")
+        fetcher._get_project_parts("invalid-url")
 
-@patch('requests.Session')
-def test_fetch_repo_structure(mock_session):
+@patch('gitlab.Gitlab')
+def test_fetch_repo_structure(mock_gitlab):
     """Test repository structure fetching."""
-    # Mock response data
-    # Create two different responses for pagination
-    first_response = Mock()
-    first_response.json.return_value = [
-        {
-            "id": "a1b2c3d4",
-            "name": "file.py",
-            "type": "blob",
-            "path": "src/file.py",
-            "mode": "100644"
-        },
-        {
-            "id": "e5f6g7h8",
-            "name": "README.md",
-            "type": "blob",
-            "path": "README.md",
-            "mode": "100644"
-        }
+    # Setup mock project with path_with_namespace
+    mock_project = Mock()
+    mock_project.path_with_namespace = "user/repo"
+    mock_project.repository_tree.side_effect = [
+        [
+            {
+                "id": "a1b2c3d4",
+                "name": "file.py",
+                "type": "blob",
+                "path": "src/file.py",
+                "mode": "100644"
+            },
+            {
+                "id": "e5f6g7h8",
+                "name": "README.md",
+                "type": "blob",
+                "path": "README.md",
+                "mode": "100644"
+            }
+        ],
+        []  # Second page returns empty list to end pagination
     ]
-    first_response.raise_for_status = Mock()
     
-    empty_response = Mock()
-    empty_response.json.return_value = []  # Second page returns empty list to end pagination
-    empty_response.raise_for_status = Mock()
-    
-    # Setup mock session to return different responses for each call
-    mock_session_instance = Mock()
-    mock_session_instance.get.side_effect = [first_response, empty_response]
-    mock_session.return_value = mock_session_instance
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
     
     # Test successful fetch
     fetcher = GitLabFetcher(token="test-token")
@@ -79,31 +82,49 @@ def test_fetch_repo_structure(mock_session):
     assert "file.py" in result["src"]
     assert "README.md" in result
     
-    # Verify API calls
+    # Verify API calls - should try unencoded path first
+    mock_gitlab_instance.projects.get.assert_called_with("user/repo")
     expected_calls = [
         unittest.mock.call(
-            "https://git-testing.devsec.astralinux.ru/api/v4/projects/user%2Frepo/repository/tree",
-            params={'ref': 'main', 'recursive': True, 'per_page': 100, 'page': 1}
+            ref='main',
+            recursive=True,
+            all=True,
+            per_page=100,
+            page=1
         ),
         unittest.mock.call(
-            "https://git-testing.devsec.astralinux.ru/api/v4/projects/user%2Frepo/repository/tree",
-            params={'ref': 'main', 'recursive': True, 'per_page': 100, 'page': 2}
+            ref='main',
+            recursive=True,
+            all=True,
+            per_page=100,
+            page=2
         )
     ]
-    mock_session_instance.get.assert_has_calls(expected_calls)
+    mock_project.repository_tree.assert_has_calls(expected_calls)
 
-@patch('requests.Session')
-def test_fetch_repo_structure_error_handling(mock_session):
+@patch('gitlab.Gitlab')
+def test_fetch_repo_structure_error_handling(mock_gitlab):
     """Test error handling in fetch_repo_structure."""
-    # Mock network error
-    mock_session_instance = Mock()
-    mock_session_instance.get.side_effect = requests.exceptions.RequestException("Network error")
-    mock_session.return_value = mock_session_instance
+    # Mock GitLab error - both unencoded and encoded paths fail
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.side_effect = [
+        gitlab.exceptions.GitlabGetError("Not found"),  # First try with unencoded path
+        gitlab.exceptions.GitlabGetError("Not found")   # Second try with encoded path
+    ]
+    mock_gitlab.return_value = mock_gitlab_instance
     
     fetcher = GitLabFetcher()
     
-    with pytest.raises(requests.exceptions.RequestException):
+    with pytest.raises(gitlab.exceptions.GitlabGetError) as exc_info:
         fetcher.fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo")
+    assert "Project not found: user/repo" in str(exc_info.value)
+    
+    # Verify both attempts were made
+    assert mock_gitlab_instance.projects.get.call_count == 2
+    mock_gitlab_instance.projects.get.assert_has_calls([
+        unittest.mock.call("user/repo"),           # First try with unencoded path
+        unittest.mock.call("user%2Frepo")          # Second try with encoded path
+    ])
 
 def test_convenience_function():
     """Test the convenience function."""
