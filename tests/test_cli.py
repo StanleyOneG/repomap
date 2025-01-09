@@ -10,9 +10,9 @@ from repomap.cli import parse_args, main
 def test_parse_args():
     """Test command line argument parsing."""
     # Test with minimal arguments
-    with patch('sys.argv', ['repomap', 'https://gitlab.com/user/repo']):
+    with patch('sys.argv', ['repomap', 'https://git-testing.devsec.astralinux.ru/user/repo']):
         args = parse_args()
-        assert args.repo_url == 'https://gitlab.com/user/repo'
+        assert args.repo_url == 'https://git-testing.devsec.astralinux.ru/user/repo'
         assert args.token is None
         assert args.output == 'repomap.json'
         assert not args.verbose
@@ -20,13 +20,13 @@ def test_parse_args():
     # Test with all arguments
     with patch('sys.argv', [
         'repomap',
-        'https://gitlab.com/user/repo',
+        'https://git-testing.devsec.astralinux.ru/user/repo',
         '-t', 'test-token',
         '-o', 'output.json',
         '-v'
     ]):
         args = parse_args()
-        assert args.repo_url == 'https://gitlab.com/user/repo'
+        assert args.repo_url == 'https://git-testing.devsec.astralinux.ru/user/repo'
         assert args.token == 'test-token'
         assert args.output == 'output.json'
         assert args.verbose
@@ -50,12 +50,12 @@ def test_main_success(mock_store_map, mock_fetch_repo):
     mock_store_map.return_value = 'output.json'
     
     # Test with minimal arguments
-    with patch('sys.argv', ['repomap', 'https://gitlab.com/user/repo']):
+    with patch('sys.argv', ['repomap', 'https://git-testing.devsec.astralinux.ru/user/repo']):
         exit_code = main()
         
         assert exit_code == 0
         mock_fetch_repo.assert_called_once_with(
-            'https://gitlab.com/user/repo',
+            'https://git-testing.devsec.astralinux.ru/user/repo',
             None
         )
         mock_store_map.assert_called_once()
@@ -71,13 +71,13 @@ def test_main_network_error(mock_fetch_repo):
     """Test handling of network errors."""
     mock_fetch_repo.side_effect = Exception("Network error")
     
-    with patch('sys.argv', ['repomap', 'https://gitlab.com/user/repo']):
+    with patch('sys.argv', ['repomap', 'https://git-testing.devsec.astralinux.ru/user/repo']):
         exit_code = main()
         assert exit_code == 1
 
 def test_main_keyboard_interrupt():
     """Test handling of keyboard interrupt."""
-    with patch('sys.argv', ['repomap', 'https://gitlab.com/user/repo']):
+    with patch('sys.argv', ['repomap', 'https://git-testing.devsec.astralinux.ru/user/repo']):
         with patch('repomap.cli.fetch_repo_structure', side_effect=KeyboardInterrupt):
             exit_code = main()
             assert exit_code == 130
@@ -89,7 +89,7 @@ def test_main_verbose_logging(mock_store_map, mock_fetch_repo, caplog):
     mock_fetch_repo.return_value = {'test': 'data'}
     mock_store_map.return_value = 'output.json'
     
-    with patch('sys.argv', ['repomap', 'https://gitlab.com/user/repo', '-v']):
+    with patch('sys.argv', ['repomap', 'https://git-testing.devsec.astralinux.ru/user/repo', '-v']):
         with caplog.at_level(logging.DEBUG):
             main()
             
@@ -105,7 +105,7 @@ def test_main_custom_output(mock_store_map, mock_fetch_repo):
     
     with patch('sys.argv', [
         'repomap',
-        'https://gitlab.com/user/repo',
+        'https://git-testing.devsec.astralinux.ru/user/repo',
         '-o', 'custom/path/map.json'
     ]):
         exit_code = main()
@@ -122,14 +122,14 @@ def test_main_with_token(mock_store_map, mock_fetch_repo):
     
     with patch('sys.argv', [
         'repomap',
-        'https://gitlab.com/user/repo',
+        'https://git-testing.devsec.astralinux.ru/user/repo',
         '-t', 'test-token'
     ]):
         exit_code = main()
         
         assert exit_code == 0
         mock_fetch_repo.assert_called_once_with(
-            'https://gitlab.com/user/repo',
+            'https://git-testing.devsec.astralinux.ru/user/repo',
             'test-token'
         )
 

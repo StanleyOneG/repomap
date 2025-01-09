@@ -11,7 +11,7 @@ def test_gitlab_fetcher_init():
     """Test GitLabFetcher initialization."""
     # Test with default values
     fetcher = GitLabFetcher()
-    assert fetcher.base_url == "https://gitlab.com"
+    assert fetcher.base_url == "https://git-testing.devsec.astralinux.ru"
     assert fetcher.token is None
     
     # Test with custom values
@@ -28,12 +28,12 @@ def test_get_project_id():
     fetcher = GitLabFetcher()
     
     # Test valid URLs
-    assert fetcher._get_project_id("https://gitlab.com/user/repo") == "user/repo"
-    assert fetcher._get_project_id("https://gitlab.com/group/subgroup/repo") == "group/subgroup/repo"
+    assert fetcher._get_project_id("https://git-testing.devsec.astralinux.ru/user/repo") == "user/repo"
+    assert fetcher._get_project_id("https://git-testing.devsec.astralinux.ru/group/subgroup/repo") == "group/subgroup/repo"
     
     # Test invalid URLs
     with pytest.raises(ValueError):
-        fetcher._get_project_id("https://gitlab.com")
+        fetcher._get_project_id("https://git-testing.devsec.astralinux.ru")
     with pytest.raises(ValueError):
         fetcher._get_project_id("invalid-url")
 
@@ -72,7 +72,7 @@ def test_fetch_repo_structure(mock_session):
     
     # Test successful fetch
     fetcher = GitLabFetcher(token="test-token")
-    result = fetcher.fetch_repo_structure("https://gitlab.com/user/repo")
+    result = fetcher.fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo")
     
     assert isinstance(result, dict)
     assert "src" in result
@@ -82,11 +82,11 @@ def test_fetch_repo_structure(mock_session):
     # Verify API calls
     expected_calls = [
         unittest.mock.call(
-            "https://gitlab.com/api/v4/projects/user%2Frepo/repository/tree",
+            "https://git-testing.devsec.astralinux.ru/api/v4/projects/user%2Frepo/repository/tree",
             params={'ref': 'main', 'recursive': True, 'per_page': 100, 'page': 1}
         ),
         unittest.mock.call(
-            "https://gitlab.com/api/v4/projects/user%2Frepo/repository/tree",
+            "https://git-testing.devsec.astralinux.ru/api/v4/projects/user%2Frepo/repository/tree",
             params={'ref': 'main', 'recursive': True, 'per_page': 100, 'page': 2}
         )
     ]
@@ -103,7 +103,7 @@ def test_fetch_repo_structure_error_handling(mock_session):
     fetcher = GitLabFetcher()
     
     with pytest.raises(requests.exceptions.RequestException):
-        fetcher.fetch_repo_structure("https://gitlab.com/user/repo")
+        fetcher.fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo")
 
 def test_convenience_function():
     """Test the convenience function."""
@@ -112,8 +112,8 @@ def test_convenience_function():
         mock_fetcher_class.return_value = mock_fetcher
         mock_fetcher.fetch_repo_structure.return_value = {"test": "data"}
         
-        result = fetch_repo_structure("https://gitlab.com/user/repo", "test-token")
+        result = fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo", "test-token")
         
         assert result == {"test": "data"}
         mock_fetcher_class.assert_called_with(token="test-token")
-        mock_fetcher.fetch_repo_structure.assert_called_with("https://gitlab.com/user/repo")
+        mock_fetcher.fetch_repo_structure.assert_called_with("https://git-testing.devsec.astralinux.ru/user/repo")

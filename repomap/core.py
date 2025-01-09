@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class GitLabFetcher:
     """Class for fetching repository data from GitLab."""
 
-    def __init__(self, base_url: str = "https://gitlab.com", token: Optional[str] = None):
+    def __init__(self, base_url: str = "https://git-testing.devsec.astralinux.ru", token: Optional[str] = None):
         """Initialize GitLab fetcher.
         
         Args:
