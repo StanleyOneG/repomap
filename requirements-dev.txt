@@ -1,0 +1,16 @@
+pytest
+pytest-cov
+pytest-env
+pytest-mock
+mypy
+types-requests
+flake8
+black
+isort
+sphinx
+sphinx-rtd-theme
+pre-commit
+tox
+requests
+tree-sitter-languages
+python-dotenv
