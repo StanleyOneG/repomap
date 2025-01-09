@@ -47,6 +47,7 @@ docs/api/
 # Project specific
 repomap.json
 *.log
+output/
 
 # macOS
 .DS_Store
