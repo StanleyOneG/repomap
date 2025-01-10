@@ -1,138 +1,102 @@
-# RepoMap
+# repomap
 
-A Python package for generating repository maps from GitLab repositories using Tree-sitter for source code parsing.
+A tool for generating repository maps and analyzing code structure from GitLab repositories.
 
 ## Features
 
-- Fetch repository structure from GitLab repositories
-- Parse source code using Tree-sitter
-- Generate comprehensive repository maps
-- Support for multiple programming languages
-- Command-line interface
-- JSON output format
+- Generate repository structure maps from GitLab repositories
+- Create call stacks from specific lines in source code files
+- Support for multiple programming languages:
+  - C
+  - C++
+  - Python
+  - PHP
+  - Go
+  - C#
+  - Java
+  - JavaScript
 
 ## Installation
-
-You can install the package using pip:
 
 ```bash
 pip install repomap
 ```
 
-Or install from source:
-
-```bash
-git clone https://github.com/username/repomap.git
-cd repomap
-pip install -e .
-```
-
 ## Usage
 
-### Command Line Interface
-
-Basic usage:
+### Generate Repository Map
 
 ```bash
-repomap https://gitlab.com/username/repo-name
-```
-
-With options:
-
-```bash
-repomap https://gitlab.com/username/repo-name \
-    -t your-gitlab-token \
-    -o output.json \
-    -v
+repomap https://your-gitlab-repo-url -o output.json
 ```
 
 Options:
-- `-t, --token`: GitLab access token (can also be set via GITLAB_TOKEN environment variable)
+- `-t, --token`: GitLab access token (overrides environment variable)
 - `-o, --output`: Output file path (default: repomap.json)
 - `-v, --verbose`: Enable verbose logging
-- `--version`: Show version information
 
-### Python API
+### Generate Call Stack
 
-```python
-from repomap.core import fetch_repo_structure
-from repomap.tree_sitter_wrapper import parse_source_file
-from repomap.utils import store_repo_map
-
-# Fetch repository structure
-repo_structure = fetch_repo_structure(
-    repo_url="https://gitlab.com/username/repo-name",
-    token="your-gitlab-token"
-)
-
-# Parse source files and generate map
-# ... (see documentation for complete example)
-
-# Store the repository map
-store_repo_map(repo_map, "output.json")
+```bash
+repomap --call-stack \
+  --target-file FILE-URL \
+  --line LINE-NUMBER \
+  --structure-file REPO-STRUCTURE-FILE-PATH \
+  --output-stack PATH-TO-OUTPUT-CALLSTACK
 ```
 
-## Supported Languages
+Options:
+- `--target-file`: URL to the target file for call stack generation
+- `--line`: Line number in target file for call stack generation
+- `--structure-file`: Path to repository structure JSON file
+- `--output-stack`: Output file path for call stack
 
-The following programming languages are supported for source code parsing:
+Example:
+```bash
+repomap --call-stack \
+  --target-file https://gitlab.com/repo/src/main.py \
+  --line 42 \
+  --structure-file repo-structure.json \
+  --output-stack call-stack.json
+```
 
-- Python (.py)
-- JavaScript (.js)
-- TypeScript (.ts)
-- C++ (.cpp, .hpp)
-- C (.c, .h)
-- Java (.java)
-- Ruby (.rb)
-- Go (.go)
-- Rust (.rs)
-- PHP (.php)
-
-## Requirements
-
-- Python 3.7 or higher
-- GitLab access token (for private repositories)
-- Required Python packages (installed automatically):
-  - requests
-  - tree-sitter-languages
-  - python-dotenv
+The generated call stack will be saved in JSON format with the following structure:
+```json
+[
+  {
+    "function": "main",
+    "file": "https://gitlab.com/repo/src/main.py",
+    "line": 42,
+    "calls": ["helper1", "helper2"]
+  }
+]
+```
 
 ## Development
 
-1. Clone the repository:
+### Setup
+
+1. Clone the repository
+2. Install dependencies:
 ```bash
-git clone https://github.com/username/repomap.git
-cd repomap
+poetry install
 ```
 
-2. Create a virtual environment:
+### Testing
+
+Run tests with:
 ```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+poetry run pytest
 ```
 
-3. Install development dependencies:
-```bash
-pip install -e ".[dev]"
-```
+### Contributing
 
-4. Run tests:
-```bash
-pytest
-```
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Run tests
+5. Submit a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Authors
-
-- Stanislav
-
-## Acknowledgments
-
-- [Tree-sitter](https://tree-sitter.github.io/tree-sitter/) for providing the parsing capabilities
-- [GitLab](https://gitlab.com) for their API
+This project is licensed under the MIT License.

@@ -9,6 +9,7 @@ from typing import Optional
 from repomap import __version__
 from repomap.core import fetch_repo_structure
 from repomap.utils import store_repo_map, setup_logging
+from repomap.callstack import CallStackGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument(
         "repo_url",
-        help="GitLab repository URL"
+        help="GitLab repository URL",
+        nargs='?'  # Make repo_url optional
     )
     
     parser.add_argument(
@@ -52,7 +54,45 @@ def parse_args() -> argparse.Namespace:
         version=f"%(prog)s {__version__}"
     )
     
-    return parser.parse_args()
+    # Call stack arguments
+    parser.add_argument(
+        "--call-stack",
+        action="store_true",
+        help="Generate call stack for a specific line in a file"
+    )
+    
+    parser.add_argument(
+        "--target-file",
+        help="URL to the target file for call stack generation"
+    )
+    
+    parser.add_argument(
+        "--line",
+        type=int,
+        help="Line number in target file for call stack generation"
+    )
+    
+    parser.add_argument(
+        "--structure-file",
+        help="Path to repository structure JSON file"
+    )
+    
+    parser.add_argument(
+        "--output-stack",
+        help="Output file path for call stack"
+    )
+    
+    args = parser.parse_args()
+    
+    # Validate arguments
+    if args.call_stack:
+        if not all([args.target_file, args.line, args.structure_file, args.output_stack]):
+            parser.error("--call-stack requires --target-file, --line, --structure-file, and --output-stack")
+    else:
+        if not args.repo_url:
+            parser.error("repo_url is required when not using --call-stack")
+    
+    return args
 
 def main() -> Optional[int]:
     """Main entry point for the CLI.
@@ -67,6 +107,15 @@ def main() -> Optional[int]:
     setup_logging(log_level)
     
     try:
+        if args.call_stack:
+            # Generate call stack
+            logger.info(f"Generating call stack for {args.target_file}:{args.line}")
+            generator = CallStackGenerator(args.structure_file)
+            call_stack = generator.generate_call_stack(args.target_file, args.line)
+            generator.save_call_stack(call_stack, args.output_stack)
+            logger.info(f"Call stack saved to {args.output_stack}")
+            return 0
+            
         # Fetch repository structure
         logger.info(f"Fetching repository structure from {args.repo_url}")
         repo_structure = fetch_repo_structure(args.repo_url, args.token)
