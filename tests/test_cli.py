@@ -81,6 +81,6 @@ def test_main_call_stack(mock_generator, tmp_path):
         assert main() == 0
     
     # Verify the generator was called correctly
-    mock_generator.assert_called_once_with(str(structure_file))
+    mock_generator.assert_called_once_with(str(structure_file), None)
     mock_instance.generate_call_stack.assert_called_once_with('test.py', 42)
     mock_instance.save_call_stack.assert_called_once()
