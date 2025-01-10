@@ -7,6 +7,7 @@ import sys
 from typing import Optional
 
 from repomap import __version__
+from repomap.config import settings
 from repomap.core import fetch_repo_structure
 from repomap.tree_sitter_wrapper import parse_source_file
 from repomap.utils import store_repo_map, setup_logging
@@ -31,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     
     parser.add_argument(
         "-t", "--token",
-        help="GitLab access token",
+        help="GitLab access token (overrides environment variable)",
         default=None
     )
     

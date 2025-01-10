@@ -1,25 +1,31 @@
 """Core functionality for fetching and processing GitLab repositories."""
 
 from typing import Dict, List, Optional
+from pydantic import SecretStr
 import logging
 import gitlab
 from urllib.parse import urlparse, quote
+
+from .config import settings
 
 logger = logging.getLogger(__name__)
 
 class GitLabFetcher:
     """Class for fetching repository data from GitLab."""
 
-    def __init__(self, base_url: str = "https://git-testing.devsec.astralinux.ru", token: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None, token: Optional[str] = None):
         """Initialize GitLab fetcher.
         
         Args:
-            base_url (str): Base URL for GitLab instance
-            token (Optional[str]): GitLab access token for authentication
+            base_url (Optional[str]): Base URL for GitLab instance. 
+                                      Uses config value if not provided.
+            token (Optional[str]): GitLab access token for authentication. 
+                                   Uses config value if not provided.
         """
-        self.base_url = base_url.rstrip('/')
-        self.token = token
-        self.gl = gitlab.Gitlab(self.base_url, private_token=token)
+        self.base_url = (base_url or settings.GITLAB_BASE_URL).rstrip('/')
+        self.token = token or settings.GITLAB_TOKEN.get_secret_value()
+        # Only pass token to Gitlab if it's not None
+        self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
 
     def _get_project_parts(self, repo_url: str) -> tuple[str, str]:
         """Extract group and project name from repository URL.

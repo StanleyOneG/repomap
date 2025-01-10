@@ -12,7 +12,6 @@ def test_gitlab_fetcher_init():
     # Test with default values
     fetcher = GitLabFetcher()
     assert fetcher.base_url == "https://git-testing.devsec.astralinux.ru"
-    assert fetcher.token is None
     
     # Test with custom values
     fetcher = GitLabFetcher("https://custom.gitlab.com", "test-token")

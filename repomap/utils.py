@@ -25,7 +25,7 @@ def store_repo_map(repo_map: Dict, output_path: Optional[str] = None) -> str:
         
     try:
         # Ensure parent directories exist
-        output_file = Path(f"output/{output_path}")
+        output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         
         # Write JSON with pretty formatting

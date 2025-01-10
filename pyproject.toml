@@ -24,6 +24,7 @@ requests = "^2.32.3"
 tree-sitter-languages = "^1.10.2"
 python-dotenv = "^1.0.1"
 python-gitlab = "^4.4.0"
+pydantic-settings = "^2.7.1"
 
 
 [tool.poetry.scripts]
