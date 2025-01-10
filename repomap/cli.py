@@ -13,8 +13,11 @@ from repomap.callstack import CallStackGenerator
 
 logger = logging.getLogger(__name__)
 
-def parse_args() -> argparse.Namespace:
+def parse_args(args=None) -> argparse.Namespace:
     """Parse command line arguments.
+    
+    Args:
+        args: List of arguments to parse. If None, uses sys.argv[1:].
     
     Returns:
         argparse.Namespace: Parsed command line arguments
@@ -82,7 +85,7 @@ def parse_args() -> argparse.Namespace:
         help="Output file path for call stack"
     )
     
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     
     # Validate arguments
     if args.call_stack:
