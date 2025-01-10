@@ -121,7 +121,7 @@ def test_invalid_line_number(mock_get, generator):
     mock_get.return_value = mock_response
     
     with pytest.raises(ValueError, match="No function found at line"):
-        generator.generate_call_stack("test.py", 1)  # Line 1 is empty
+        generator.generate_call_stack("test.py", 4)  # Line 4 is between functions
 
 def test_load_structure(structure_file):
     """Test loading repository structure."""
