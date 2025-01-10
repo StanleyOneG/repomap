@@ -134,13 +134,9 @@ class CallStackGenerator:
         try:
             # First try GitLab-specific handling
             content = self._get_gitlab_content(file_url)
-            if content is not None:
-                return content
+            # if content is not None:
+            return content
                 
-            # Fallback to regular HTTP request for tests
-            response = requests.get(file_url)
-            response.raise_for_status()
-            return response.text
         except Exception as e:
             print(f"Failed to fetch file content from {file_url}: {e}")
             return None
