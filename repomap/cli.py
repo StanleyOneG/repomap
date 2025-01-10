@@ -7,9 +7,7 @@ import sys
 from typing import Optional
 
 from repomap import __version__
-from repomap.config import settings
 from repomap.core import fetch_repo_structure
-from repomap.tree_sitter_wrapper import parse_source_file
 from repomap.utils import store_repo_map, setup_logging
 
 logger = logging.getLogger(__name__)

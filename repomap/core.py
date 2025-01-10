@@ -1,7 +1,6 @@
 """Core functionality for fetching and processing GitLab repositories."""
 
-from typing import Dict, List, Optional
-from pydantic import SecretStr
+from typing import Dict, Optional
 import logging
 import gitlab
 from urllib.parse import urlparse, quote
