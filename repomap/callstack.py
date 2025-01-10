@@ -4,8 +4,9 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 import json
-import requests
+import gitlab
 from tree_sitter_languages import get_language, get_parser
+from .config import settings
 
 class CallStackGenerator:
     """Class for generating call stacks from source code using tree-sitter."""
@@ -21,15 +22,17 @@ class CallStackGenerator:
         '.js': 'javascript'
     }
 
-    def __init__(self, structure_file: str):
+    def __init__(self, structure_file: str, token: Optional[str] = None):
         """Initialize the call stack generator.
         
         Args:
             structure_file: Path to the JSON file containing repository structure
+            token: Optional GitLab access token for authentication
         """
         self.repo_structure = self._load_structure(structure_file)
         self.parsers = {}
         self.queries = {}
+        self.token = token or (settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None)
         self._init_parsers()
 
     def _load_structure(self, structure_file: str) -> dict:
@@ -61,6 +64,64 @@ class CallStackGenerator:
             except Exception as e:
                 print(f"Failed to initialize parser for {lang}: {e}")
 
+    def _get_gitlab_content(self, file_url: str) -> Optional[str]:
+        """Fetch content from GitLab URL.
+        
+        Args:
+            file_url: GitLab URL to the file
+            
+        Returns:
+            str: File content or None if failed
+        """
+        try:
+            # Parse GitLab URL components
+            # Example URL: https://git-testing.devsec.astralinux.ru/astra/acl/-/blob/1.7.0/libacl/acl_add_perm.c
+            
+            # Remove the base URL to get the project path and file info
+            if not file_url.startswith(settings.GITLAB_BASE_URL):
+                return None
+            
+            remaining_path = file_url[len(settings.GITLAB_BASE_URL):].strip('/')
+            
+            # Split into project path and file info
+            parts = remaining_path.split('/-/')
+            if len(parts) != 2:
+                return None
+            
+            project_path = parts[0].strip('/')  # e.g., "astra/acl"
+            file_info = parts[1].strip('/')     # e.g., "blob/1.7.0/libacl/acl_add_perm.c"
+            
+            # Parse file info to get ref and file path
+            file_parts = file_info.split('/')
+            if len(file_parts) < 3 or file_parts[0] != 'blob':
+                return None
+            
+            ref = file_parts[1]  # e.g., "1.7.0"
+            file_path = '/'.join(file_parts[2:])  # e.g., "libacl/acl_add_perm.c"
+            
+            print(f"Parsed URL components:")
+            print(f"  Project path: {project_path}")
+            print(f"  Ref: {ref}")
+            print(f"  File path: {file_path}")
+            
+            # Initialize GitLab client
+            gl = gitlab.Gitlab(settings.GITLAB_BASE_URL, private_token=self.token)
+            
+            try:
+                project = gl.projects.get(project_path)
+            except gitlab.exceptions.GitlabGetError:
+                # If direct path fails, try with URL encoding
+                from urllib.parse import quote
+                encoded_path = quote(project_path, safe='')
+                project = gl.projects.get(encoded_path)
+            
+            # Get file content
+            f = project.files.get(file_path=file_path, ref=ref)
+            return f.decode().decode('utf-8')
+        except Exception as e:
+            print(f"Failed to fetch GitLab content: {e}")
+            return None
+            
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL.
         
@@ -71,6 +132,12 @@ class CallStackGenerator:
             str: File content or None if failed
         """
         try:
+            # First try GitLab-specific handling
+            content = self._get_gitlab_content(file_url)
+            if content is not None:
+                return content
+                
+            # Fallback to regular HTTP request for tests
             response = requests.get(file_url)
             response.raise_for_status()
             return response.text
@@ -108,9 +175,13 @@ class CallStackGenerator:
                 end_line = cursor.node.end_point[0]
                 
                 if start_line <= line <= end_line:
-                    # Find the function name node
+                    # For C functions, we need to handle the function_declarator
                     for child in cursor.node.children:
-                        if child.type == 'identifier':
+                        if child.type == 'function_declarator':
+                            for subchild in child.children:
+                                if subchild.type == 'identifier':
+                                    return (subchild.text.decode('utf8'), start_line, end_line)
+                        elif child.type == 'identifier':
                             return (child.text.decode('utf8'), start_line, end_line)
             
             # Continue traversing

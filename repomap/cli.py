@@ -113,7 +113,7 @@ def main() -> Optional[int]:
         if args.call_stack:
             # Generate call stack
             logger.info(f"Generating call stack for {args.target_file}:{args.line}")
-            generator = CallStackGenerator(args.structure_file)
+            generator = CallStackGenerator(args.structure_file, args.token)
             call_stack = generator.generate_call_stack(args.target_file, args.line)
             generator.save_call_stack(call_stack, args.output_stack)
             logger.info(f"Call stack saved to {args.output_stack}")
