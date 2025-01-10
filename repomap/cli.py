@@ -1,6 +1,7 @@
 """Command-line interface for repository map generation."""
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -85,15 +86,25 @@ def parse_args(args=None) -> argparse.Namespace:
         help="Output file path for call stack"
     )
     
+    # Print function arguments
+    parser.add_argument(
+        "--print-function",
+        action="store_true",
+        help="Print the function containing a specific line in a file"
+    )
+    
     args = parser.parse_args(args)
     
     # Validate arguments
-    if args.call_stack:
-        if not all([args.target_file, args.line, args.structure_file, args.output_stack]):
-            parser.error("--call-stack requires --target-file, --line, --structure-file, and --output-stack")
+    if args.print_function:
+        if not all([args.target_file, args.line]):
+            parser.error("--print-function requires --target-file and --line")
+    elif args.call_stack:
+        if not all([args.target_file, args.line]):
+            parser.error("--call-stack requires --target-file and --line")
     else:
         if not args.repo_url:
-            parser.error("repo_url is required when not using --call-stack")
+            parser.error("repo_url is required when not using --call-stack or --print-function")
     
     return args
 
@@ -110,13 +121,30 @@ def main() -> Optional[int]:
     setup_logging(log_level)
     
     try:
-        if args.call_stack:
+        if args.print_function:
+            # Print function content
+            logger.info(f"Getting function content for {args.target_file}:{args.line}")
+            generator = CallStackGenerator(token=args.token)
+            try:
+                function_content = generator.get_function_content(args.target_file, args.line)
+                print(function_content)
+                return 0
+            except ValueError as e:
+                logger.error(str(e))
+                return 1
+                
+        elif args.call_stack:
             # Generate call stack
             logger.info(f"Generating call stack for {args.target_file}:{args.line}")
             generator = CallStackGenerator(args.structure_file, args.token)
             call_stack = generator.generate_call_stack(args.target_file, args.line)
-            generator.save_call_stack(call_stack, args.output_stack)
-            logger.info(f"Call stack saved to {args.output_stack}")
+            
+            if args.output_stack:
+                generator.save_call_stack(call_stack, args.output_stack)
+                logger.info(f"Call stack saved to {args.output_stack}")
+            else:
+                # Print to stdout if no output file specified
+                print(json.dumps(call_stack, indent=2))
             return 0
             
         # Fetch repository structure

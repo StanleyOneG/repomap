@@ -22,28 +22,30 @@ class CallStackGenerator:
         '.js': 'javascript'
     }
 
-    def __init__(self, structure_file: str, token: Optional[str] = None):
+    def __init__(self, structure_file: Optional[str] = None, token: Optional[str] = None):
         """Initialize the call stack generator.
         
         Args:
-            structure_file: Path to the JSON file containing repository structure
+            structure_file: Optional path to the JSON file containing repository structure
             token: Optional GitLab access token for authentication
         """
-        self.repo_structure = self._load_structure(structure_file)
+        self.repo_structure = self._load_structure(structure_file) if structure_file else {}
         self.parsers = {}
         self.queries = {}
         self.token = token or (settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None)
         self._init_parsers()
 
-    def _load_structure(self, structure_file: str) -> dict:
+    def _load_structure(self, structure_file: Optional[str]) -> dict:
         """Load repository structure from JSON file.
         
         Args:
-            structure_file: Path to the JSON file
+            structure_file: Optional path to the JSON file
             
         Returns:
             dict: Repository structure
         """
+        if not structure_file:
+            return {}
         with open(structure_file) as f:
             return json.load(f)
 
@@ -271,3 +273,39 @@ class CallStackGenerator:
         """
         with open(output_file, 'w') as f:
             json.dump(call_stack, f, indent=2)
+
+    def get_function_content(self, file_url: str, line_number: int) -> str:
+        """Get the content of the function containing the specified line.
+        
+        Args:
+            file_url: URL to the target file
+            line_number: Line number within the function
+            
+        Returns:
+            str: Content of the function
+            
+        Raises:
+            ValueError: If no function is found or file type is unsupported
+        """
+        lang = self._detect_language(file_url)
+        if not lang or lang not in self.parsers:
+            raise ValueError(f"Unsupported file type: {file_url}")
+
+        content = self._get_file_content(file_url)
+        if not content:
+            raise ValueError(f"Failed to fetch content from {file_url}")
+
+        parser = self.parsers[lang]
+        tree = parser.parse(bytes(content, 'utf8'))
+        
+        # Find the function containing the target line
+        func_info = self._find_function_at_line(tree, line_number)
+        if not func_info:
+            raise ValueError(f"No function found at line {line_number}")
+        
+        func_name, start_line, end_line = func_info
+        
+        # Get the function content by extracting the lines
+        lines = content.splitlines()
+        function_lines = lines[start_line:end_line + 1]
+        return '\n'.join(function_lines)

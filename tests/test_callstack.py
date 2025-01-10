@@ -129,6 +129,30 @@ def test_save_call_stack(generator, tmp_path):
         saved_data = json.load(f)
     assert saved_data == call_stack
 
+@patch('gitlab.Gitlab')
+def test_generate_call_stack_minimal(mock_gitlab):
+    """Test generating call stack with minimal arguments."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_PYTHON_CONTENT
+    
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+    
+    # Create generator without structure file
+    generator = CallStackGenerator()
+    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    call_stack = generator.generate_call_stack(url, 7)
+    
+    assert len(call_stack) == 1
+    assert call_stack[0]['function'] == 'main'
+    assert call_stack[0]['file'] == url
+    assert call_stack[0]['line'] == 7
+    assert 'helper' in call_stack[0]['calls']
+
 def test_unsupported_language(generator):
     """Test handling of unsupported file types."""
     with pytest.raises(ValueError, match="Unsupported file type"):
@@ -158,3 +182,39 @@ def test_load_structure(structure_file):
     """Test loading repository structure."""
     generator = CallStackGenerator(structure_file)
     assert generator.repo_structure == SAMPLE_STRUCTURE
+
+@patch('gitlab.Gitlab')
+def test_get_function_content(mock_gitlab):
+    """Test getting function content."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_PYTHON_CONTENT
+    
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+    
+    generator = CallStackGenerator()  # No structure file needed for testing
+    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    
+    # Test getting main function content
+    content = generator.get_function_content(url, 7)  # Line inside main()
+    assert "def main():" in content
+    assert "x = helper()" in content
+    assert "return x" in content
+    
+    # Test getting helper function content
+    content = generator.get_function_content(url, 2)  # Line inside helper()
+    assert "def helper():" in content
+    assert 'print("Helper function")' in content
+    assert "return 42" in content
+    
+    # Test invalid line number
+    with pytest.raises(ValueError, match="No function found at line"):
+        generator.get_function_content(url, 10)  # Line outside any function
+    
+    # Test unsupported file type
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        generator.get_function_content("test.unsupported", 1)
