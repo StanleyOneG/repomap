@@ -44,6 +44,75 @@ if __name__ == "__main__":
     main()
 '''
 
+# Sample C file content for testing
+SAMPLE_C_CONTENT = '''
+static int try_open(snd_mixer_class_t *class, const char *lib)
+{
+    class_priv_t *priv = snd_mixer_class_get_private(class);
+    snd_mixer_event_t event_func;
+    snd_mixer_sbasic_init_t init_func = NULL;
+    char *xlib, *path, errbuf[256];
+    void *h;
+    int err = 0;
+
+    if (!lib)
+        return -ENXIO;
+    path = getenv("ALSA_MIXER_SIMPLE_MODULES");
+    if (!path)
+        path = SO_PATH;
+    xlib = malloc(strlen(lib) + strlen(path) + 1 + 1);
+    if (xlib == NULL)
+        return -ENOMEM;
+    strcpy(xlib, path);
+    strcat(xlib, "/");
+    strcat(xlib, lib);
+    h = INTERNAL(snd_dlopen)(xlib, RTLD_NOW, errbuf, sizeof(errbuf));
+    if (h == NULL) {
+        SNDERR("Unable to open library '%s' (%s)", xlib, errbuf);
+        free(xlib);
+        return -ENXIO;
+    }
+    priv->dlhandle = h;
+    event_func = snd_dlsym(h, "alsa_mixer_simple_event", NULL);
+    if (event_func == NULL) {
+        SNDERR("Symbol 'alsa_mixer_simple_event' was not found in '%s'", xlib);
+        err = -ENXIO;
+    }
+    if (err == 0) {
+        init_func = snd_dlsym(h, "alsa_mixer_simple_init", NULL);
+        if (init_func == NULL) {
+            SNDERR("Symbol 'alsa_mixer_simple_init' was not found in '%s'", xlib);
+            err = -ENXIO;
+        }
+    }
+    free(xlib);
+    err = err == 0 ? init_func(class) : err;
+    if (err < 0)
+        return err;
+    snd_mixer_class_set_event(class, event_func);
+    return 1;
+}
+
+static int match(snd_mixer_class_t *class, const char *lib, const char *searchl)
+{
+    class_priv_t *priv = snd_mixer_class_get_private(class);
+    const char *components;
+
+    if (searchl == NULL)
+        return try_open(class, lib);
+    components = snd_ctl_card_info_get_components(priv->info);
+    while (*components != '\\0') {
+        if (!strncmp(components, searchl, strlen(searchl)))
+            return try_open(class, lib);
+        while (*components != ' ' && *components != '\\0')
+            components++;
+        while (*components == ' ' && *components != '\\0')
+            components++;
+    }
+    return 0;
+}
+'''
+
 @pytest.fixture
 def structure_file(tmp_path):
     """Create a temporary structure file for testing."""
@@ -111,6 +180,34 @@ def test_generate_call_stack(mock_gitlab, generator):
     assert call_stack[0]['file'] == url
     assert call_stack[0]['line'] == 7
     assert 'helper' in call_stack[0]['calls']
+
+@patch('gitlab.Gitlab')
+def test_generate_call_stack_c(mock_gitlab, generator):
+    """Test generating call stack from C code."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_C_CONTENT
+    
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+    
+    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.c"
+    # Test line inside match function
+    call_stack = generator.generate_call_stack(url, 57)  # Line with the match function definition
+    
+    assert len(call_stack) == 1
+    assert call_stack[0]['function'] == 'match'
+    assert call_stack[0]['file'] == url
+    assert call_stack[0]['line'] == 57
+    # Check for function calls inside match
+    assert 'try_open' in call_stack[0]['calls']
+    assert 'snd_mixer_class_get_private' in call_stack[0]['calls']
+    assert 'snd_ctl_card_info_get_components' in call_stack[0]['calls']
+    assert 'strncmp' in call_stack[0]['calls']
+    assert 'strlen' in call_stack[0]['calls']
 
 def test_save_call_stack(generator, tmp_path):
     """Test saving call stack to file."""

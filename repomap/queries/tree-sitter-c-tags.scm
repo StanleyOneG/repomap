@@ -7,3 +7,11 @@
 (type_definition declarator: (type_identifier) @name.definition.type) @definition.type
 
 (enum_specifier name: (type_identifier) @name.definition.type) @definition.type
+
+; Add patterns for capturing function calls
+(call_expression
+  function: (identifier) @name.reference.call)
+
+(call_expression
+  function: (field_expression
+    field: (field_identifier) @name.reference.call))
