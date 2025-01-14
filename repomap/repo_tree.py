@@ -46,42 +46,57 @@ class RepoTreeGenerator:
         """
         return self.call_stack_gen._detect_language(file_path)
 
-    def _find_functions(self, node: Node, functions: Dict[str, Any], current_class: Optional[str] = None) -> None:
+    def _find_functions(self, node: Node, functions: Dict[str, Any], current_class: Optional[str] = None, lang: str = 'python') -> None:
         """Recursively find all function definitions in the AST.
         
         Args:
             node: Current AST node
             functions: Dictionary to store function data
             current_class: Name of the current class if inside one
+            lang: Programming language being parsed
         """
         # Process function definitions
-        if node.type in ('function_definition', 'method_definition'):
-            # Find function name
+        if node.type in ('function_definition', 'method_definition') or (lang in ('c', 'cpp') and node.type == 'declaration'):
             name_node = None
-            for child in node.children:
-                if child.type == 'identifier':
-                    name_node = child
-                    break
-                elif child.type == 'function_declarator':
-                    for subchild in child.children:
-                        if subchild.type == 'identifier':
-                            name_node = subchild
-                            break
+            
+            if lang in ('c', 'cpp') and node.type == 'declaration':
+                # Handle C/C++ function declarations
+                for child in node.children:
+                    if child.type == 'function_declarator':
+                        for subchild in child.children:
+                            if subchild.type == 'identifier':
+                                name_node = subchild
+                                break
+                        break
+            else:
+                # Handle Python-style function definitions
+                for child in node.children:
+                    if child.type == 'identifier':
+                        name_node = child
+                        break
+                    elif child.type == 'function_declarator':
+                        for subchild in child.children:
+                            if subchild.type == 'identifier':
+                                name_node = subchild
+                                break
             
             if name_node:
                 func_name = name_node.text.decode('utf8')
                 # Find the function body
                 body_node = None
                 for child in node.children:
-                    if child.type == 'block':
+                    if child.type in ('block', 'compound_statement'):
                         body_node = child
                         break
                 
-                if body_node:
-                    # Process the function body for calls
-                    calls = self._find_function_calls(body_node)
-                    # Also process the function node itself for decorators and defaults
-                    calls.extend(self._find_function_calls(node))
+                if body_node or lang in ('c', 'cpp'):  # C/C++ might have declarations without bodies
+                    # Process the function body for calls if it exists
+                    calls = []
+                    if body_node:
+                        calls = self._find_function_calls(body_node, lang)
+                        # Also process the function node itself for decorators and defaults
+                        calls.extend(self._find_function_calls(node, lang))
+                    
                     functions[func_name] = {
                         "name": func_name,
                         "start_line": node.start_point[0],
@@ -90,37 +105,58 @@ class RepoTreeGenerator:
                         "calls": list(set(calls))  # Remove duplicates
                     }
         
-        # Process class definitions
-        elif node.type == 'class_definition':
+        # Process class/struct definitions
+        elif node.type == 'class_definition' or (lang in ('c', 'cpp') and node.type in ('struct_specifier', 'type_definition')):
             class_name = None
-            for child in node.children:
-                if child.type == 'identifier':
-                    class_name = child.text.decode('utf8')
-                    break
+            
+            if lang in ('c', 'cpp') and node.type == 'type_definition':
+                # Handle typedef struct cases
+                for child in node.children:
+                    if child.type == 'type_identifier':
+                        class_name = child.text.decode('utf8')
+                        break
+                    elif child.type == 'struct_specifier':
+                        for subchild in child.children:
+                            if subchild.type == 'type_identifier':
+                                class_name = subchild.text.decode('utf8')
+                                break
+            elif lang in ('c', 'cpp') and node.type == 'struct_specifier':
+                # Handle direct struct definitions
+                for child in node.children:
+                    if child.type == 'type_identifier':
+                        class_name = child.text.decode('utf8')
+                        break
+            else:
+                # Handle Python-style class definitions
+                for child in node.children:
+                    if child.type == 'identifier':
+                        class_name = child.text.decode('utf8')
+                        break
             
             if class_name:
-                # Find the class body
+                # Find the class/struct body
                 body_node = None
                 for child in node.children:
-                    if child.type == 'block':
+                    if child.type in ('block', 'field_declaration_list'):
                         body_node = child
                         break
                 
                 if body_node:
                     # Process class body with updated current_class
                     for child in body_node.children:
-                        self._find_functions(child, functions, class_name)
+                        self._find_functions(child, functions, class_name, lang)
         
         # Continue traversing
         for child in node.children:
-            if child.type not in ('block', 'suite'):  # Skip blocks we've already processed
-                self._find_functions(child, functions, current_class)
+            if child.type not in ('block', 'suite', 'compound_statement'):  # Skip blocks we've already processed
+                self._find_functions(child, functions, current_class, lang)
 
-    def _find_function_calls(self, node: Node) -> List[str]:
+    def _find_function_calls(self, node: Node, lang: str = 'python') -> List[str]:
         """Find all function calls within a node.
         
         Args:
             node: AST node to search
+            lang: Programming language being parsed
             
         Returns:
             List[str]: List of function names that are called
@@ -130,6 +166,8 @@ class RepoTreeGenerator:
         def get_call_name(node: Node) -> Optional[str]:
             """Extract the full name of a function call."""
             if node.type == 'identifier':
+                return node.text.decode('utf8')
+            elif node.type == 'field_identifier':  # For C/C++ struct field access
                 return node.text.decode('utf8')
             elif node.type == 'attribute':
                 parts = []
@@ -154,11 +192,11 @@ class RepoTreeGenerator:
         def visit(node: Node):
             """Visit each node in the AST."""
             # Handle function calls
-            if node.type == 'call':
+            if node.type == 'call' or (lang in ('c', 'cpp') and node.type == 'call_expression'):
                 # Get the function being called
                 func_node = None
                 for child in node.children:
-                    if child.type in ('identifier', 'attribute'):
+                    if child.type in ('identifier', 'attribute', 'field_identifier'):
                         func_node = child
                         break
                 
@@ -173,12 +211,12 @@ class RepoTreeGenerator:
             # Visit all children
             for child in node.children:
                 # Skip certain node types that won't contain calls
-                if child.type not in ('string', 'integer', 'float', 'comment', 'parameters', 'keyword'):
+                if child.type not in ('string', 'integer', 'float', 'comment', 'parameters', 'keyword', 'string_literal', 'number_literal'):
                     visit(child)
 
         # Start from the function body
         for child in node.children:
-            if child.type == 'block':
+            if child.type in ('block', 'compound_statement'):
                 visit(child)
                 break
         
@@ -208,24 +246,48 @@ class RepoTreeGenerator:
         }
         
         # Find all functions and their calls
-        self._find_functions(tree.root_node, ast_data["functions"])
+        self._find_functions(tree.root_node, ast_data["functions"], lang=lang)
         
-        # Extract class information
+        # Extract class/struct information
         def find_classes(node: Node):
-            if node.type == 'class_definition':
-                for child in node.children:
-                    if child.type == 'identifier':
-                        class_name = child.text.decode('utf8')
-                        ast_data["classes"][class_name] = {
-                            "name": class_name,
-                            "start_line": node.start_point[0],
-                            "end_line": node.end_point[0],
-                            "methods": [
-                                func_name for func_name, func_data in ast_data["functions"].items()
-                                if func_data["class"] == class_name
-                            ]
-                        }
-                        break
+            if node.type == 'class_definition' or (lang in ('c', 'cpp') and node.type in ('struct_specifier', 'type_definition')):
+                class_name = None
+                
+                if lang in ('c', 'cpp') and node.type == 'type_definition':
+                    # Handle typedef struct cases
+                    for child in node.children:
+                        if child.type == 'type_identifier':
+                            class_name = child.text.decode('utf8')
+                            break
+                        elif child.type == 'struct_specifier':
+                            for subchild in child.children:
+                                if subchild.type == 'type_identifier':
+                                    class_name = subchild.text.decode('utf8')
+                                    break
+                elif lang in ('c', 'cpp') and node.type == 'struct_specifier':
+                    # Handle direct struct definitions
+                    for child in node.children:
+                        if child.type == 'type_identifier':
+                            class_name = child.text.decode('utf8')
+                            break
+                else:
+                    # Handle Python-style class definitions
+                    for child in node.children:
+                        if child.type == 'identifier':
+                            class_name = child.text.decode('utf8')
+                            break
+                
+                if class_name:
+                    ast_data["classes"][class_name] = {
+                        "name": class_name,
+                        "start_line": node.start_point[0],
+                        "end_line": node.end_point[0],
+                        "methods": [
+                            func_name for func_name, func_data in ast_data["functions"].items()
+                            if func_data["class"] == class_name
+                        ]
+                    }
+            
             for child in node.children:
                 find_classes(child)
         
@@ -247,6 +309,13 @@ class RepoTreeGenerator:
                 for child in node.children:
                     if child.type == 'dotted_name':
                         ast_data["imports"].append(child.text.decode('utf8'))
+            elif lang in ('c', 'cpp') and node.type == 'preproc_include':
+                # Handle C/C++ #include statements
+                for child in node.children:
+                    if child.type in ('string_literal', 'system_lib_string'):
+                        include_path = child.text.decode('utf8').strip('"<>')
+                        ast_data["imports"].append(include_path)
+            
             for child in node.children:
                 find_imports(child)
         

@@ -12,7 +12,7 @@ def repo_tree_generator():
     return RepoTreeGenerator()
 
 @pytest.fixture
-def mock_file_content():
+def mock_python_content():
     """Mock Python file content for testing."""
     return """
 def outer_function():
@@ -80,7 +80,65 @@ def test_detect_language(repo_tree_generator):
 
 @patch("gitlab.Gitlab")
 @patch("repomap.core.fetch_repo_structure")
-def test_generate_repo_tree(mock_fetch, mock_gitlab, repo_tree_generator, mock_file_content):
+@pytest.fixture
+def mock_c_content():
+    """Mock C file content for testing."""
+    return """
+#include <stdio.h>
+#include <stdlib.h>
+#include "local_header.h"
+
+typedef struct {
+    int x;
+    int y;
+} Point;
+
+struct Rectangle {
+    Point top_left;
+    Point bottom_right;
+};
+
+typedef struct Shape {
+    int type;
+    union {
+        Point point;
+        struct Rectangle rect;
+    } data;
+} Shape;
+
+static void init_point(Point *p, int x, int y) {
+    p->x = x;
+    p->y = y;
+    validate_point(p);
+}
+
+int calculate_area(struct Rectangle *rect) {
+    int width = rect->bottom_right.x - rect->top_left.x;
+    int height = rect->bottom_right.y - rect->top_left.y;
+    return width * height;
+}
+
+void process_shape(Shape *shape) {
+    switch(shape->type) {
+        case 0:
+            init_point(&shape->data.point, 0, 0);
+            break;
+        case 1:
+            calculate_area(&shape->data.rect);
+            transform_shape(shape);
+            break;
+    }
+}
+
+static void transform_shape(Shape *shape) {
+    if (shape->type == 0) {
+        shape->data.point.x *= 2;
+        shape->data.point.y *= 2;
+    }
+}
+"""
+
+def test_generate_repo_tree_python(mock_fetch, mock_gitlab, repo_tree_generator, mock_python_content):
     # Mock GitLab client
     mock_gl = MagicMock()
     mock_gitlab.return_value = mock_gl
@@ -98,7 +156,7 @@ def test_generate_repo_tree(mock_fetch, mock_gitlab, repo_tree_generator, mock_f
     }
     
     # Mock file content fetching
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_file_content):
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_python_content):
         repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
         
         # Verify repository tree structure
@@ -194,6 +252,73 @@ def test_save_repo_tree(repo_tree_generator, tmp_path):
     with open(output_file) as f:
         saved_data = json.loads(f.read())
         assert saved_data == repo_tree
+
+@patch("gitlab.Gitlab")
+@patch("repomap.core.fetch_repo_structure")
+def test_generate_repo_tree_c(mock_fetch, mock_gitlab, repo_tree_generator, mock_c_content):
+    """Test repository AST tree generation for C code."""
+    # Mock GitLab client
+    mock_gl = MagicMock()
+    mock_gitlab.return_value = mock_gl
+    mock_project = MagicMock()
+    mock_gl.projects.get.return_value = mock_project
+    
+    # Mock repository structure
+    mock_fetch.return_value = {
+        "src": {
+            "shapes.c": {
+                "type": "blob",
+                "size": 100
+            }
+        }
+    }
+    
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_c_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+        
+        # Verify repository tree structure
+        assert "metadata" in repo_tree
+        assert "files" in repo_tree
+        assert "src/shapes.c" in repo_tree["files"]
+        
+        # Verify AST data for the C file
+        file_data = repo_tree["files"]["src/shapes.c"]
+        assert file_data["language"] == "c"
+        
+        ast_data = file_data["ast"]
+        assert "functions" in ast_data
+        assert "classes" in ast_data
+        assert "calls" in ast_data
+        assert "imports" in ast_data
+        
+        # Verify functions
+        functions = ast_data["functions"]
+        assert "init_point" in functions
+        assert "calculate_area" in functions
+        assert "process_shape" in functions
+        assert "transform_shape" in functions
+        
+        # Verify function calls
+        init_point_calls = functions["init_point"]["calls"]
+        assert "validate_point" in init_point_calls
+        
+        process_shape_calls = functions["process_shape"]["calls"]
+        assert "init_point" in process_shape_calls
+        assert "calculate_area" in process_shape_calls
+        assert "transform_shape" in process_shape_calls
+        
+        # Verify structs/typedefs as classes
+        classes = ast_data["classes"]
+        assert "Point" in classes
+        assert "Rectangle" in classes
+        assert "Shape" in classes
+        
+        # Verify imports (#includes)
+        imports = ast_data["imports"]
+        assert "stdio.h" in imports
+        assert "stdlib.h" in imports
+        assert "local_header.h" in imports
 
 @patch("gitlab.Gitlab")
 @patch("repomap.core.fetch_repo_structure")
