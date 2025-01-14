@@ -11,6 +11,7 @@ from repomap import __version__
 from repomap.core import fetch_repo_structure
 from repomap.utils import store_repo_map, setup_logging
 from repomap.callstack import CallStackGenerator
+from repomap.repo_tree import RepoTreeGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,13 @@ def parse_args(args=None) -> argparse.Namespace:
         version=f"%(prog)s {__version__}"
     )
     
+    # Repository AST tree arguments
+    parser.add_argument(
+        "--repo-tree",
+        action="store_true",
+        help="Generate repository AST tree"
+    )
+    
     # Call stack arguments
     parser.add_argument(
         "--call-stack",
@@ -99,6 +107,17 @@ def parse_args(args=None) -> argparse.Namespace:
     if args.print_function:
         if not all([args.target_file, args.line]):
             parser.error("--print-function requires --target-file and --line")
+    elif args.repo_tree:
+        # Generate repository AST tree
+        logger.info(f"Generating repository AST tree for {args.repo_url}")
+        generator = RepoTreeGenerator(args.token)
+        repo_tree = generator.generate_repo_tree(args.repo_url)
+        
+        # Save repository AST tree
+        generator.save_repo_tree(repo_tree, args.output)
+        logger.info(f"Repository AST tree saved to {args.output}")
+        return 0
+        
     elif args.call_stack:
         if not all([args.target_file, args.line]):
             parser.error("--call-stack requires --target-file and --line")
