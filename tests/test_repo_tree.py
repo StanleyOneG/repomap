@@ -9,7 +9,19 @@ from gitlab import Gitlab
 @pytest.fixture
 def repo_tree_generator():
     """Create a RepoTreeGenerator instance for testing."""
-    return RepoTreeGenerator()
+    with patch('repomap.repo_tree.settings') as mock_settings:
+        mock_settings.GITLAB_BASE_URL = "https://gitlab.example.com"
+        with patch('gitlab.Gitlab') as mock_gitlab:
+            # Create mock instance with projects attribute
+            mock_gl = Mock()
+            mock_project = Mock()
+            mock_project.default_branch = 'main'
+            mock_gl.projects.get.return_value = mock_project
+            mock_gitlab.return_value = mock_gl
+            
+            generator = RepoTreeGenerator()
+            # generator.token = "mock-token"  # Set mock token to avoid auth issues
+            return generator
 
 @pytest.fixture
 def mock_python_content():
@@ -78,8 +90,23 @@ def test_detect_language(repo_tree_generator):
     assert repo_tree_generator._detect_language("test.cpp") == "cpp"
     assert repo_tree_generator._detect_language("test.unknown") is None
 
-@patch("gitlab.Gitlab")
-@patch("repomap.core.fetch_repo_structure")
+@pytest.fixture
+def mock_gitlab():
+    """Mock GitLab client."""
+    with patch('gitlab.Gitlab') as mock:
+        mock_gl = MagicMock()
+        mock.return_value = mock_gl
+        mock_project = MagicMock()
+        mock_gl.projects.get.return_value = mock_project
+        mock_project.default_branch = 'main'
+        return mock
+
+@pytest.fixture
+def mock_fetch():
+    """Mock fetch_repo_structure function."""
+    with patch('repomap.core.fetch_repo_structure') as mock:
+        return mock
+
 @pytest.fixture
 def mock_c_content():
     """Mock C file content for testing."""
@@ -138,93 +165,98 @@ static void transform_shape(Shape *shape) {
 }
 """
 
-def test_generate_repo_tree_python(mock_fetch, mock_gitlab, repo_tree_generator, mock_python_content):
-    # Mock GitLab client
-    mock_gl = MagicMock()
-    mock_gitlab.return_value = mock_gl
-    mock_project = MagicMock()
-    mock_gl.projects.get.return_value = mock_project
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_python(mock_gitlab, repo_tree_generator, mock_python_content):
     """Test repository AST tree generation."""
-    # Mock repository structure
-    mock_fetch.return_value = {
-        "src": {
-            "main.py": {
-                "type": "blob",
-                "size": 100
-            }
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "main.py",
+            "type": "blob",
+            "path": "src/main.py",
+            "mode": "100644"
         }
-    }
+    ]
+    
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
     
     # Mock file content fetching
     with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_python_content):
         repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
-        
-        # Verify repository tree structure
-        assert "metadata" in repo_tree
-        assert "files" in repo_tree
-        assert "src/main.py" in repo_tree["files"]
-        
-        # Verify AST data for the Python file
-        file_data = repo_tree["files"]["src/main.py"]
-        assert file_data["language"] == "python"
-        
-        ast_data = file_data["ast"]
-        assert "functions" in ast_data
-        assert "classes" in ast_data
-        assert "calls" in ast_data
-        
-        # Verify functions
-        functions = ast_data["functions"]
-        assert "outer_function" in functions
-        assert "inner_function" in functions
-        assert "helper_function" in functions
-        assert "process_result" in functions
-        
-        # Verify outer_function calls
-        outer_calls = functions["outer_function"]["calls"]
-        assert "inner_function" in outer_calls
-        assert "process_result" in outer_calls
-        
-        # Verify process_result calls
-        process_calls = functions["process_result"]["calls"]
-        assert "validate" in process_calls
-        assert "transform" in process_calls
-        
-        # Verify inner_function calls
-        inner_calls = functions["inner_function"]["calls"]
-        assert "helper_function" in inner_calls
-        
-        # Verify classes
-        classes = ast_data["classes"]
-        assert "DataProcessor" in classes
-        
-        # Verify class methods
-        methods = classes["DataProcessor"]["methods"]
-        assert "process" in methods
-        assert "validate_data" in methods
-        assert "transform_data" in methods
-        assert "save_result" in methods
-        assert "_internal_validate" in methods
-        assert "_internal_transform" in methods
-        assert "_internal_save" in methods
-        
-        # Verify method calls
-        process_method = functions["process"]
-        assert process_method["class"] == "DataProcessor"
-        assert "validate_data" in process_method["calls"]
-        assert "transform_data" in process_method["calls"]
-        assert "save_result" in process_method["calls"]
-        assert "outer_function" in process_method["calls"]
-        
-        validate_data_method = functions["validate_data"]
-        assert validate_data_method["class"] == "DataProcessor"
-        assert "validate" in validate_data_method["calls"]
-        assert "_internal_validate" in validate_data_method["calls"]
-        
-        transform_data_method = functions["transform_data"]
-        assert transform_data_method["class"] == "DataProcessor"
-        assert "transform" in transform_data_method["calls"]
-        assert "_internal_transform" in transform_data_method["calls"]
+    
+    # Verify repository tree structure
+    assert "metadata" in repo_tree
+    assert "files" in repo_tree
+    assert "src/main.py" in repo_tree["files"]
+    
+    # Verify AST data for the Python file
+    file_data = repo_tree["files"]["src/main.py"]
+    assert file_data["language"] == "python"
+    
+    ast_data = file_data["ast"]
+    assert "functions" in ast_data
+    assert "classes" in ast_data
+    assert "calls" in ast_data
+    
+    # Verify functions
+    functions = ast_data["functions"]
+    assert "outer_function" in functions
+    assert "inner_function" in functions
+    assert "helper_function" in functions
+    assert "process_result" in functions
+    
+    # Verify outer_function calls
+    outer_calls = functions["outer_function"]["calls"]
+    assert "inner_function" in outer_calls
+    assert "process_result" in outer_calls
+    
+    # Verify process_result calls
+    process_calls = functions["process_result"]["calls"]
+    assert "validate" in process_calls
+    assert "transform" in process_calls
+    
+    # Verify inner_function calls
+    inner_calls = functions["inner_function"]["calls"]
+    assert "helper_function" in inner_calls
+    
+    # Verify classes
+    classes = ast_data["classes"]
+    assert "DataProcessor" in classes
+    
+    # Verify class methods
+    methods = classes["DataProcessor"]["methods"]
+    assert "process" in methods
+    assert "validate_data" in methods
+    assert "transform_data" in methods
+    assert "save_result" in methods
+    assert "_internal_validate" in methods
+    assert "_internal_transform" in methods
+    assert "_internal_save" in methods
+    
+    # Verify method calls
+    process_method = functions["process"]
+    assert process_method["class"] == "DataProcessor"
+    assert "validate_data" in process_method["calls"]
+    assert "transform_data" in process_method["calls"]
+    assert "save_result" in process_method["calls"]
+    assert "outer_function" in process_method["calls"]
+    
+    validate_data_method = functions["validate_data"]
+    assert validate_data_method["class"] == "DataProcessor"
+    assert "validate" in validate_data_method["calls"]
+    assert "_internal_validate" in validate_data_method["calls"]
+    
+    transform_data_method = functions["transform_data"]
+    assert transform_data_method["class"] == "DataProcessor"
+    assert "transform" in transform_data_method["calls"]
+    assert "_internal_transform" in transform_data_method["calls"]
 
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
@@ -253,115 +285,123 @@ def test_save_repo_tree(repo_tree_generator, tmp_path):
         saved_data = json.loads(f.read())
         assert saved_data == repo_tree
 
-@patch("gitlab.Gitlab")
-@patch("repomap.core.fetch_repo_structure")
-def test_generate_repo_tree_c(mock_fetch, mock_gitlab, repo_tree_generator, mock_c_content):
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     """Test repository AST tree generation for C code."""
-    # Mock GitLab client
-    mock_gl = MagicMock()
-    mock_gitlab.return_value = mock_gl
-    mock_project = MagicMock()
-    mock_gl.projects.get.return_value = mock_project
-    
-    # Mock repository structure
-    mock_fetch.return_value = {
-        "src": {
-            "shapes.c": {
-                "type": "blob",
-                "size": 100
-            }
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "shapes.c",
+            "type": "blob",
+            "path": "src/shapes.c",
+            "mode": "100644"
         }
-    }
+    ]
+    
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
     
     # Mock file content fetching
     with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_c_content):
         repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
-        
-        # Verify repository tree structure
-        assert "metadata" in repo_tree
-        assert "files" in repo_tree
-        assert "src/shapes.c" in repo_tree["files"]
-        
-        # Verify AST data for the C file
-        file_data = repo_tree["files"]["src/shapes.c"]
-        assert file_data["language"] == "c"
-        
-        ast_data = file_data["ast"]
-        assert "functions" in ast_data
-        assert "classes" in ast_data
-        assert "calls" in ast_data
-        assert "imports" in ast_data
-        
-        # Verify functions
-        functions = ast_data["functions"]
-        assert "init_point" in functions
-        assert "calculate_area" in functions
-        assert "process_shape" in functions
-        assert "transform_shape" in functions
-        
-        # Verify function calls
-        init_point_calls = functions["init_point"]["calls"]
-        assert "validate_point" in init_point_calls
-        
-        process_shape_calls = functions["process_shape"]["calls"]
-        assert "init_point" in process_shape_calls
-        assert "calculate_area" in process_shape_calls
-        assert "transform_shape" in process_shape_calls
-        
-        # Verify structs/typedefs as classes
-        classes = ast_data["classes"]
-        assert "Point" in classes
-        assert "Rectangle" in classes
-        assert "Shape" in classes
-        
-        # Verify imports (#includes)
-        imports = ast_data["imports"]
-        assert "stdio.h" in imports
-        assert "stdlib.h" in imports
-        assert "local_header.h" in imports
+    
+    # Verify repository tree structure
+    assert "metadata" in repo_tree
+    assert "files" in repo_tree
+    assert "src/shapes.c" in repo_tree["files"]
+    
+    # Verify AST data for the C file
+    file_data = repo_tree["files"]["src/shapes.c"]
+    assert file_data["language"] == "c"
+    
+    ast_data = file_data["ast"]
+    assert "functions" in ast_data
+    assert "classes" in ast_data
+    assert "calls" in ast_data
+    assert "imports" in ast_data
+    
+    # Verify functions
+    functions = ast_data["functions"]
+    assert "init_point" in functions
+    assert "calculate_area" in functions
+    assert "process_shape" in functions
+    assert "transform_shape" in functions
+    
+    # Verify function calls
+    init_point_calls = functions["init_point"]["calls"]
+    assert "validate_point" in init_point_calls
+    
+    process_shape_calls = functions["process_shape"]["calls"]
+    assert "init_point" in process_shape_calls
+    assert "calculate_area" in process_shape_calls
+    assert "transform_shape" in process_shape_calls
+    
+    # Verify structs/typedefs as classes
+    classes = ast_data["classes"]
+    assert "Point" in classes
+    assert "Rectangle" in classes
+    assert "Shape" in classes
+    
+    # Verify imports (#includes)
+    imports = ast_data["imports"]
+    assert "stdio.h" in imports
+    assert "stdlib.h" in imports
+    assert "local_header.h" in imports
 
-@patch("gitlab.Gitlab")
-@patch("repomap.core.fetch_repo_structure")
-def test_generate_repo_tree_with_unsupported_files(mock_fetch, mock_gitlab, repo_tree_generator):
-    # Mock GitLab client
-    mock_gl = MagicMock()
-    mock_gitlab.return_value = mock_gl
-    mock_project = MagicMock()
-    mock_gl.projects.get.return_value = mock_project
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_unsupported_files(mock_gitlab, repo_tree_generator):
     """Test repository AST tree generation with unsupported file types."""
-    # Mock repository structure with unsupported file
-    mock_fetch.return_value = {
-        "src": {
-            "data.txt": {
-                "type": "blob",
-                "size": 100
-            }
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "data.txt",
+            "type": "blob",
+            "path": "src/data.txt",
+            "mode": "100644"
         }
-    }
+    ]
+    
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
     
     repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
     
     # Verify unsupported file was skipped
     assert len(repo_tree["files"]) == 0
 
-@patch("gitlab.Gitlab")
-@patch("repomap.core.fetch_repo_structure")
-def test_generate_repo_tree_with_failed_content_fetch(mock_fetch, mock_gitlab, repo_tree_generator):
-    # Mock GitLab client
-    mock_gl = MagicMock()
-    mock_gitlab.return_value = mock_gl
-    mock_project = MagicMock()
-    mock_gl.projects.get.return_value = mock_project
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_failed_content_fetch(mock_gitlab, repo_tree_generator):
     """Test repository AST tree generation when file content fetch fails."""
-    # Mock repository structure
-    mock_fetch.return_value = {
-        "src": {
-            "main.py": {
-                "type": "blob",
-                "size": 100
-            }
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "main.py",
+            "type": "blob",
+            "path": "src/main.py",
+            "mode": "100644"
         }
-    }
+    ]
+    
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
     
     # Mock file content fetch failure
     with patch.object(repo_tree_generator, '_get_file_content', return_value=None):
