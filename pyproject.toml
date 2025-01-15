@@ -29,6 +29,21 @@ pydantic-settings = "^2.7.1"
 setuptools = "^75.8.0"
 
 
+[tool.pylint.'MESSAGES CONTROL']
+# max-line-length = 120
+disable = "missing-module-docstring,missing-function-docstring,missing-class-docstring"
+
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 88
+# src_paths = ["app/src"]
+multi_line_output = 3
+
+
 [tool.poetry.scripts]
 repomap = "repomap.cli:main"
 
