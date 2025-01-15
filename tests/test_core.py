@@ -11,7 +11,7 @@ def test_gitlab_fetcher_init():
     """Test GitLabFetcher initialization."""
     # Test with default values
     fetcher = GitLabFetcher()
-    assert fetcher.base_url == "https://git-testing.devsec.astralinux.ru"
+    assert fetcher.base_url == "https://example.com"
     
     # Test with custom values
     fetcher = GitLabFetcher("https://custom.gitlab.com", "test-token")
@@ -27,17 +27,17 @@ def test_get_project_parts():
     fetcher = GitLabFetcher()
     
     # Test valid URLs
-    group, project = fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru/user/repo")
+    group, project = fetcher._get_project_parts("https://example.com/user/repo")
     assert group == "user"
     assert project == "repo"
     
-    group, project = fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru/group/subgroup/repo")
+    group, project = fetcher._get_project_parts("https://example.com/group/subgroup/repo")
     assert group == "group/subgroup"
     assert project == "repo"
     
     # Test invalid URLs
     with pytest.raises(ValueError):
-        fetcher._get_project_parts("https://git-testing.devsec.astralinux.ru")
+        fetcher._get_project_parts("https://example.com")
     with pytest.raises(ValueError):
         fetcher._get_project_parts("invalid-url")
 
@@ -75,7 +75,7 @@ def test_fetch_repo_structure(mock_gitlab):
     
     # Test successful fetch
     fetcher = GitLabFetcher(token="test-token")
-    result = fetcher.fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo")
+    result = fetcher.fetch_repo_structure("https://example.com/user/repo")
     
     assert isinstance(result, dict)
     assert "src" in result
@@ -108,7 +108,7 @@ def test_fetch_repo_structure_error_handling(mock_gitlab):
     fetcher = GitLabFetcher()
     
     with pytest.raises(gitlab.exceptions.GitlabGetError) as exc_info:
-        fetcher.fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo")
+        fetcher.fetch_repo_structure("https://example.com/user/repo")
     assert "Project not found: user/repo" in str(exc_info.value)
     
     # Verify both attempts were made
@@ -125,8 +125,8 @@ def test_convenience_function():
         mock_fetcher_class.return_value = mock_fetcher
         mock_fetcher.fetch_repo_structure.return_value = {"test": "data"}
         
-        result = fetch_repo_structure("https://git-testing.devsec.astralinux.ru/user/repo", "test-token")
+        result = fetch_repo_structure("https://example.com/user/repo", "test-token")
         
         assert result == {"test": "data"}
         mock_fetcher_class.assert_called_with(token="test-token")
-        mock_fetcher.fetch_repo_structure.assert_called_with("https://git-testing.devsec.astralinux.ru/user/repo")
+        mock_fetcher.fetch_repo_structure.assert_called_with("https://example.com/user/repo")

@@ -76,8 +76,6 @@ class CallStackGenerator:
             str: File content or None if failed
         """
         try:
-            # Parse GitLab URL components
-            # Example URL: https://git-testing.devsec.astralinux.ru/astra/acl/-/blob/1.7.0/libacl/acl_add_perm.c
             
             # Remove the base URL to get the project path and file info
             if not file_url.startswith(settings.GITLAB_BASE_URL):

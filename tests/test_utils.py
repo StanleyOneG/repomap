@@ -14,7 +14,7 @@ def sample_repo_map():
     """Sample repository map data for testing."""
     return {
         "metadata": {
-            "url": "https://git-testing.devsec.astralinux.ru/user/repo",
+            "url": "https://example.com/user/repo",
             "version": "0.1.0"
         },
         "structure": {

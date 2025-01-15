@@ -1,17 +1,14 @@
 """Tests for call stack generation functionality."""
 
 import json
-import os
 import pytest
-import gitlab
 from unittest.mock import Mock, patch, MagicMock
-from pathlib import Path
 
 from repomap.callstack import CallStackGenerator
 from repomap.config import settings
 
 # Mock settings for tests
-settings.GITLAB_BASE_URL = "https://git-testing.devsec.astralinux.ru"
+settings.GITLAB_BASE_URL = "https://example.com"
 
 # Sample repository structure for testing
 SAMPLE_STRUCTURE = {
@@ -153,7 +150,7 @@ def test_get_file_content(mock_gitlab, generator):
     mock_gitlab.return_value = mock_gitlab_instance
     
     # Test with a GitLab URL
-    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
     content = generator._get_file_content(url)
     
     assert content == SAMPLE_PYTHON_CONTENT
@@ -172,7 +169,7 @@ def test_generate_call_stack(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
     
-    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
     call_stack = generator.generate_call_stack(url, 7)
     
     assert len(call_stack) == 1
@@ -194,7 +191,7 @@ def test_generate_call_stack_c(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
     
-    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.c"
+    url = "https://example.com/group/project/-/blob/main/src/file.c"
     # Test line inside match function
     call_stack = generator.generate_call_stack(url, 57)  # Line with the match function definition
     
@@ -241,7 +238,7 @@ def test_generate_call_stack_minimal(mock_gitlab):
     
     # Create generator without structure file
     generator = CallStackGenerator()
-    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
     call_stack = generator.generate_call_stack(url, 7)
     
     assert len(call_stack) == 1
@@ -253,7 +250,7 @@ def test_generate_call_stack_minimal(mock_gitlab):
 def test_unsupported_language(generator):
     """Test handling of unsupported file types."""
     with pytest.raises(ValueError, match="Unsupported file type"):
-        url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/test.unsupported"
+        url = "https://example.com/group/project/-/blob/main/test.unsupported"
         generator.generate_call_stack(url, 1)
 
 @patch('gitlab.Gitlab')
@@ -271,7 +268,7 @@ def test_invalid_line_number(mock_gitlab, generator):
     
     # Line 4 is between functions, should raise ValueError
     with pytest.raises(ValueError) as exc_info:
-        url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+        url = "https://example.com/group/project/-/blob/main/src/file.py"
         generator.generate_call_stack(url, 4)
     assert "No function found at line 4" in str(exc_info.value)
 
@@ -294,7 +291,7 @@ def test_get_function_content(mock_gitlab):
     mock_gitlab.return_value = mock_gitlab_instance
     
     generator = CallStackGenerator()  # No structure file needed for testing
-    url = "https://git-testing.devsec.astralinux.ru/group/project/-/blob/main/src/file.py"
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
     
     # Test getting main function content
     content = generator.get_function_content(url, 7)  # Line inside main()
