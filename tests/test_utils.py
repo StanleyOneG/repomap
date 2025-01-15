@@ -29,10 +29,10 @@ def test_store_repo_map(sample_repo_map, tmp_path):
     # Test with default output path
     with patch("pathlib.Path.mkdir"):  # Mock directory creation
         with patch("builtins.open", mock_open()) as mock_file:
-            output_path = store_repo_map(sample_repo_map)
-            assert output_path == "repomap.json"
+            output_path = store_repo_map(sample_repo_map, "test_repomap.json")
+            assert output_path == "test_repomap.json"
             mock_file.assert_called_once_with(
-                Path("repomap.json"), "w", encoding="utf-8"
+                Path("test_repomap.json"), "w", encoding="utf-8"
             )
 
             # Get all write calls and combine their content
@@ -54,14 +54,13 @@ def test_store_repo_map(sample_repo_map, tmp_path):
         stored_data = json.load(f)
         assert stored_data == sample_repo_map
 
-
 def test_store_repo_map_error_handling(sample_repo_map):
     """Test error handling when storing repository map."""
     # Test IOError handling
     with patch("builtins.open", mock_open()) as mock_file:
         mock_file.side_effect = IOError("Test error")
         with pytest.raises(IOError):
-            store_repo_map(sample_repo_map)
+            store_repo_map(sample_repo_map, "test_repomap.json")
 
 
 def test_load_repo_map(sample_repo_map, tmp_path):

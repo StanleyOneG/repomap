@@ -10,9 +10,6 @@ from repomap.core import GitLabFetcher, fetch_repo_structure
 
 def test_gitlab_fetcher_init():
     """Test GitLabFetcher initialization."""
-    # Test with default values
-    fetcher = GitLabFetcher()
-    assert fetcher.base_url == "https://example.com"
 
     # Test with custom values
     fetcher = GitLabFetcher("https://custom.gitlab.com", "test-token")

@@ -111,11 +111,12 @@ def test_main_print_function(mock_generator):
 
 
 @patch('repomap.cli.fetch_repo_structure')
-def test_main_repo_map(mock_fetch):
+def test_main_repo_map(mock_fetch, tmp_path):
     """Test main function with repository mapping."""
     mock_fetch.return_value = {"src": {"main.py": {"type": "blob"}}}
+    temp_output = tmp_path / "repomap.json"
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo']):
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--output', str(temp_output)]):
         assert main() == 0
         mock_fetch.assert_called_once_with('https://example.com/repo', None)
 
