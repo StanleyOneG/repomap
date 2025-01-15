@@ -49,7 +49,7 @@ class RepoTreeGenerator:
         """
         return self.call_stack_gen._detect_language(file_path)
 
-    def _find_functions(
+    def _find_functions(  # noqa: C901
         self,
         node: Node,
         functions: Dict[str, Any],
@@ -172,7 +172,9 @@ class RepoTreeGenerator:
             ):  # Skip blocks we've already processed
                 self._find_functions(child, functions, current_class, lang)
 
-    def _find_function_calls(self, node: Node, lang: str = 'python') -> List[str]:
+    def _find_function_calls(  # noqa: C901
+        self, node: Node, lang: str = 'python'
+    ) -> List[str]:
         """Find all function calls within a node.
 
         Args:
@@ -257,7 +259,7 @@ class RepoTreeGenerator:
 
         return list(set(calls))  # Remove duplicates
 
-    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:
+    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:  # noqa: C901
         """Parse file content into AST data.
 
         Args:
@@ -356,7 +358,7 @@ class RepoTreeGenerator:
 
         return ast_data
 
-    def generate_repo_tree(self, repo_url: str) -> Dict[str, Any]:
+    def generate_repo_tree(self, repo_url: str) -> Dict[str, Any]:  # noqa: C901
         """Generate repository AST tree.
 
         Args:

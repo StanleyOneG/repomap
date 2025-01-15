@@ -115,7 +115,7 @@ def parse_args(args=None) -> argparse.Namespace:
     return args
 
 
-def main() -> Optional[int]:
+def main() -> Optional[int]:  # noqa: C901
     """Main entry point for the CLI.
 
     Returns:

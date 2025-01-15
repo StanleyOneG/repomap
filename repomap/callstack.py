@@ -106,7 +106,7 @@ class CallStackGenerator:
             ref = file_parts[1]  # e.g., "1.7.0"
             file_path = '/'.join(file_parts[2:])  # e.g., "libacl/acl_add_perm.c"
 
-            print(f"Parsed URL components:")
+            print("Parsed URL components:")
             print(f"  Project path: {project_path}")
             print(f"  Ref: {ref}")
             print(f"  File path: {file_path}")
@@ -161,7 +161,9 @@ class CallStackGenerator:
         ext = os.path.splitext(file_path)[1].lower()
         return self.SUPPORTED_LANGUAGES.get(ext)
 
-    def _find_function_at_line(self, tree, line: int) -> Optional[Tuple[str, int, int]]:
+    def _find_function_at_line(  # noqa: C901
+        self, tree, line: int
+    ) -> Optional[Tuple[str, int, int]]:
         """Find function definition containing the specified line.
 
         Args:

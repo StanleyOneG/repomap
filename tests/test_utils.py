@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import pytest
 from pathlib import Path
 from unittest.mock import patch, mock_open
@@ -144,7 +143,7 @@ def test_store_repo_map_creates_directories(sample_repo_map, tmp_path):
     nested_path = tmp_path / "deep" / "nested" / "path" / "map.json"
 
     # Store map in nested directory structure
-    output_path = store_repo_map(sample_repo_map, str(nested_path))
+    store_repo_map(sample_repo_map, str(nested_path))
 
     # Verify directories were created
     assert nested_path.parent.exists()

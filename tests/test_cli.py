@@ -1,9 +1,7 @@
 """Tests for command-line interface."""
 
-import json
 import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 
 from repomap.cli import parse_args, main
 

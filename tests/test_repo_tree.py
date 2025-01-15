@@ -4,7 +4,6 @@ import json
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 from repomap.repo_tree import RepoTreeGenerator
-from gitlab import Gitlab
 
 
 @pytest.fixture
@@ -45,43 +44,43 @@ def helper_function():
 def process_result(result):
     validate(result)
     transform(result)
-    
+
 def validate(data):
     print("Validating")
-    
+
 def transform(data):
     print("Transforming")
 
 class DataProcessor:
     def __init__(self):
         self.data = None
-        
+
     def process(self):
         self.validate_data()
         result = self.transform_data()
         self.save_result(result)
         outer_function()
-    
+
     def validate_data(self):
         validate(self.data)
         self._internal_validate()
-    
+
     def transform_data(self):
         result = transform(self.data)
         processed = self._internal_transform(result)
         return processed
-    
+
     def save_result(self, result):
         self.data = result
         self._internal_save()
-        
+
     def _internal_validate(self):
         print("Internal validation")
-        
+
     def _internal_transform(self, data):
         print("Internal transform")
         return data
-        
+
     def _internal_save(self):
         print("Internal save")
 """

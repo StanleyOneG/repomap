@@ -62,7 +62,9 @@ class GitLabFetcher:
         except Exception as e:
             raise ValueError(f"Invalid repository URL: {str(e)}")
 
-    def fetch_repo_structure(self, repo_url: str, ref: Optional[str] = None) -> Dict:
+    def fetch_repo_structure(  # noqa: C901
+        self, repo_url: str, ref: Optional[str] = None
+    ) -> Dict:
         """Fetch repository structure from GitLab.
 
         Args:
