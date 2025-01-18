@@ -58,7 +58,8 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
         "--repo-tree", action="store_true", help="Generate repository AST tree"
     )
     parser.add_argument(
-        "--ref", help="Git reference (branch, tag, commit) to use for repository AST tree"
+        "--ref",
+        help="Git reference (branch, tag, commit) to use for repository AST tree",
     )
 
     # Call stack arguments
