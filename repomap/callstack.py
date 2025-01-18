@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
+from urllib.parse import urlparse
 
 import gitlab
 from tree_sitter_languages import get_language, get_parser
@@ -86,10 +87,13 @@ class CallStackGenerator:
         """
         try:
             # Remove the base URL to get the project path and file info
-            if not file_url.startswith(settings.GITLAB_BASE_URL):
+            # Extract base URL from file URL
+            parsed = urlparse(file_url)
+            if not parsed.scheme or not parsed.netloc:
                 return None
-
-            remaining_path = file_url[len(settings.GITLAB_BASE_URL) :].strip('/')
+                
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+            remaining_path = file_url[len(base_url):].strip('/')
 
             # Split into project path and file info
             parts = remaining_path.split('/-/')
@@ -112,8 +116,8 @@ class CallStackGenerator:
             print(f"  Ref: {ref}")
             print(f"  File path: {file_path}")
 
-            # Initialize GitLab client
-            gl = gitlab.Gitlab(settings.GITLAB_BASE_URL, private_token=self.token)
+            # Initialize GitLab client with detected base URL
+            gl = gitlab.Gitlab(base_url, private_token=self.token)
 
             try:
                 project = gl.projects.get(project_path)

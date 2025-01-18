@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     """Application settings."""
 
     # GitLab Configuration
-    GITLAB_BASE_URL: str = os.getenv("GITLAB_BASE_URL")
+    GITLAB_BASE_URL: str | None = os.getenv("GITLAB_BASE_URL")
     GITLAB_TOKEN: SecretStr | None
 
     class Config:

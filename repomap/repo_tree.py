@@ -33,7 +33,9 @@ class RepoTreeGenerator:
         self.call_stack_gen = CallStackGenerator(token=self.token)
         self.parsers = self.call_stack_gen.parsers
         self.queries = self.call_stack_gen.queries
-        self.gl = gitlab.Gitlab(settings.GITLAB_BASE_URL, private_token=self.token)
+        # GitLab client will be initialized when needed since we may need to detect base_url first
+        self.gl = None
+        self.base_url = None
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -420,6 +422,13 @@ class RepoTreeGenerator:
 
         # Get project and validate ref if provided
         try:
+            # Initialize GitLab client if needed
+            if not self.gl:
+                # Get base URL from fetcher which will detect it from repo_url
+                fetcher._ensure_gitlab_client(repo_url)
+                self.base_url = fetcher.base_url
+                self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
+
             group_path, project_name = fetcher._get_project_parts(repo_url)
             project_path = f"{group_path}/{project_name}"
             project = self.gl.projects.get(project_path)

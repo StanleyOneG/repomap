@@ -1,6 +1,7 @@
 """Tests for core functionality."""
 
 import unittest
+from unittest import mock
 from unittest.mock import Mock, patch
 
 import gitlab
@@ -21,6 +22,47 @@ def test_gitlab_fetcher_init():
     fetcher = GitLabFetcher("https://custom.gitlab.com/")
     assert fetcher.base_url == "https://custom.gitlab.com"
 
+
+@pytest.mark.parametrize(
+    "url,expected",
+    [
+        ("https://gitlab.com/group/repo", "https://gitlab.com"),
+        ("https://git.private.mysite.ru/group/repo", "https://git.private.mysite.ru"),
+        ("https://gitlab.example.com/group/subgroup/repo", "https://gitlab.example.com"),
+    ],
+)
+def test_get_base_url_from_repo_url(url, expected):
+    """Test extracting base URL from repository URL."""
+    fetcher = GitLabFetcher()
+    assert fetcher._get_base_url_from_repo_url(url) == expected
+
+def test_get_base_url_from_repo_url_invalid():
+    """Test extracting base URL from invalid URLs."""
+    fetcher = GitLabFetcher()
+    with pytest.raises(ValueError, match="Invalid URL format"):
+        fetcher._get_base_url_from_repo_url("not-a-url")
+
+def test_ensure_gitlab_client():
+    """Test GitLab client initialization with base URL detection."""
+    # Test with explicit base URL
+    fetcher = GitLabFetcher(base_url="https://gitlab.com")
+    fetcher._ensure_gitlab_client("https://gitlab.com/group/repo")
+    assert fetcher.base_url == "https://gitlab.com"
+    assert fetcher.gl is not None
+
+    # Test with auto-detected base URL (no config)
+    with mock.patch("repomap.core.settings.GITLAB_BASE_URL", None):
+        fetcher = GitLabFetcher()
+        fetcher._ensure_gitlab_client("https://git.private.mysite.ru/group/repo")
+        assert fetcher.base_url == "https://git.private.mysite.ru"
+        assert fetcher.gl is not None
+
+    # Test with config-provided base URL
+    with mock.patch("repomap.core.settings.GITLAB_BASE_URL", "https://gitlab.example.com"):
+        fetcher = GitLabFetcher()
+        fetcher._ensure_gitlab_client("https://gitlab.com/group/repo")
+        assert fetcher.base_url == "https://gitlab.example.com"
+        assert fetcher.gl is not None
 
 def test_get_project_parts():
     """Test project parts extraction from URL."""

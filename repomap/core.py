@@ -23,10 +23,48 @@ class GitLabFetcher:
             token (Optional[str]): GitLab access token for authentication.
                                    Uses config value if not provided.
         """
-        self.base_url = (base_url or settings.GITLAB_BASE_URL).rstrip('/')
-        self.token = token or settings.GITLAB_TOKEN.get_secret_value()
-        # Only pass token to Gitlab if it's not None
-        self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
+        # If base_url is provided, use it. Otherwise, it will be detected from the first repository URL
+        self.base_url = base_url.rstrip('/') if base_url is not None else None
+        self.token = token or (settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None)
+        # GitLab client will be initialized when needed since we may need to detect base_url first
+        self.gl = None
+
+    def _get_base_url_from_repo_url(self, repo_url: str) -> str:
+        """Extract GitLab base URL from repository URL.
+
+        Args:
+            repo_url (str): GitLab repository URL
+
+        Returns:
+            str: Base URL for GitLab instance
+
+        Raises:
+            ValueError: If URL is invalid
+        """
+        try:
+            parsed = urlparse(repo_url)
+            if not parsed.scheme or not parsed.netloc:
+                raise ValueError("Invalid URL format")
+            return f"{parsed.scheme}://{parsed.netloc}"
+        except Exception as e:
+            raise ValueError(f"Invalid repository URL: {str(e)}")
+
+    def _ensure_gitlab_client(self, repo_url: str):
+        """Ensure GitLab client is initialized with correct base URL.
+
+        Args:
+            repo_url (str): Repository URL to detect base URL from if needed
+        """
+        if not self.base_url:
+            # If GITLAB_BASE_URL is set in settings, use it
+            if settings.GITLAB_BASE_URL:
+                self.base_url = settings.GITLAB_BASE_URL.rstrip('/')
+            else:
+                # Otherwise detect from repo URL
+                self.base_url = self._get_base_url_from_repo_url(repo_url)
+        
+        if not self.gl:
+            self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
 
     def _get_project_parts(self, repo_url: str) -> tuple[str, str]:
         """Extract group and project name from repository URL.
@@ -80,7 +118,11 @@ class GitLabFetcher:
             ValueError: If repository URL is invalid
         """
         try:
+            # Initialize GitLab client if needed
+            self._ensure_gitlab_client(repo_url)
+            
             group_path, project_name = self._get_project_parts(repo_url)
+
             # Get project instance using the full path
             project_path = f"{group_path}/{project_name}"
             try:
