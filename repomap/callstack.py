@@ -96,16 +96,16 @@ class CallStackGenerator:
             if len(parts) != 2:
                 return None
 
-            project_path = parts[0].strip('/')  # e.g., "astra/acl"
-            file_info = parts[1].strip('/')  # e.g., "blob/1.7.0/libacl/acl_add_perm.c"
+            project_path = parts[0].strip('/')  # e.g., "group/repo"
+            file_info = parts[1].strip('/')  # e.g., "blob/ref/some_dir/some_file.c"
 
             # Parse file info to get ref and file path
             file_parts = file_info.split('/')
             if len(file_parts) < 3 or file_parts[0] != 'blob':
                 return None
 
-            ref = file_parts[1]  # e.g., "1.7.0"
-            file_path = '/'.join(file_parts[2:])  # e.g., "libacl/acl_add_perm.c"
+            ref = file_parts[1]  # e.g., "main"
+            file_path = '/'.join(file_parts[2:])  # e.g., "some_dir/some_file.c"
 
             print("Parsed URL components:")
             print(f"  Project path: {project_path}")
