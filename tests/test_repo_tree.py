@@ -508,6 +508,9 @@ def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
     mock_commits.get.side_effect = gitlab.exceptions.GitlabGetError()
     mock_project.commits = mock_commits
 
+    # Mock repository_tree to raise GitlabError for invalid ref
+    mock_project.repository_tree.side_effect = gitlab.exceptions.GitlabError("Tree Not Found")
+
     # Setup mock GitLab instance
     mock_gitlab_instance = Mock()
     mock_gitlab_instance.projects.get.return_value = mock_project

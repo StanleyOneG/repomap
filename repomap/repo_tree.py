@@ -404,10 +404,15 @@ class RepoTreeGenerator:
             raise e
         except Exception as e:
             logger.warning(f"Failed to get default branch: {e}")
-            ref = 'master'
+            ref = 'main'
 
         # Fetch repository structure
-        repo_structure = fetcher.fetch_repo_structure(repo_url)
+        try:
+            repo_structure = fetcher.fetch_repo_structure(repo_url, ref=ref)
+        except gitlab.exceptions.GitlabError as e:
+            if "not found or is empty" in str(e):
+                raise ValueError(f"No ref found in repository by name: {ref}")
+            raise
 
         repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
 
