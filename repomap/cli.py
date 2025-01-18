@@ -80,10 +80,24 @@ def parse_args(args=None) -> argparse.Namespace:
     parser.add_argument("--output-stack", help="Output file path for call stack")
 
     # Print function arguments
-    parser.add_argument(
+    function_group = parser.add_mutually_exclusive_group()
+    function_group.add_argument(
         "--print-function",
         action="store_true",
         help="Print the function containing a specific line in a file",
+    )
+    function_group.add_argument(
+        "--print-function-by-name",
+        action="store_true",
+        help="Print function code by its name in a repository",
+    )
+    parser.add_argument(
+        "--name",
+        help="Function name to search for when using --print-function-by-name",
+    )
+    parser.add_argument(
+        "--repo-tree-path",
+        help="Path to repository tree JSON file when using --print-function-by-name",
     )
 
     args = parser.parse_args(args)
@@ -92,6 +106,9 @@ def parse_args(args=None) -> argparse.Namespace:
     if args.print_function:
         if not all([args.target_file, args.line]):
             parser.error("--print-function requires --target-file and --line")
+    elif args.print_function_by_name:
+        if not all([args.name, args.repo_tree_path]):
+            parser.error("--print-function-by-name requires --name and --repo-tree-path")
     elif args.repo_tree:
         # Generate repository AST tree
         logger.info(f"Generating repository AST tree for {args.repo_url}")
@@ -128,14 +145,21 @@ def main() -> Optional[int]:  # noqa: C901
     setup_logging(log_level)
 
     try:
-        if args.print_function:
-            # Print function content
-            logger.info(f"Getting function content for {args.target_file}:{args.line}")
+        if args.print_function or args.print_function_by_name:
             generator = CallStackGenerator(token=args.token)
             try:
-                function_content = generator.get_function_content(
-                    args.target_file, args.line
-                )
+                if args.print_function:
+                    # Print function content by line
+                    logger.info(f"Getting function content for {args.target_file}:{args.line}")
+                    function_content = generator.get_function_content_by_line(
+                        args.target_file, args.line
+                    )
+                else:
+                    # Print function content by name
+                    logger.info(f"Getting function content for {args.name}")
+                    function_content = generator.get_function_content_by_name(
+                        args.repo_tree_path, args.name
+                    )
                 print(function_content)
                 return 0
             except ValueError as e:
@@ -156,7 +180,7 @@ def main() -> Optional[int]:  # noqa: C901
                 print(json.dumps(call_stack, indent=2))
             return 0
 
-        # Fetch repository structure
+        # Only fetch repository structure if not using print function commands
         logger.info(f"Fetching repository structure from {args.repo_url}")
         repo_structure = fetch_repo_structure(args.repo_url, args.token)
 

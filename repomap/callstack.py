@@ -83,7 +83,6 @@ class CallStackGenerator:
             str: File content or None if failed
         """
         try:
-
             # Remove the base URL to get the project path and file info
             if not file_url.startswith(settings.GITLAB_BASE_URL):
                 return None
@@ -262,12 +261,21 @@ class CallStackGenerator:
 
         tree = parser.parse(bytes(content, 'utf8'))
 
-        # Find the function containing the target line
-        func_info = self._find_function_at_line(tree, line_number)
-        if not func_info:
-            raise ValueError(f"No function found at line {line_number}")
-
-        func_name, start_line, end_line = func_info
+        # Get function start and end lines
+        if line_number is not None:
+            # Find the function containing the target line
+            func_info = self._find_function_at_line(tree, line_number)
+            if not func_info:
+                raise ValueError(f"No function found at line {line_number}")
+            func_name, start_line, end_line = func_info
+        elif start_line is not None:
+            # Use the provided start line and find the function there
+            func_info = self._find_function_at_line(tree, start_line)
+            if not func_info:
+                raise ValueError(f"No function found at line {start_line}")
+            func_name, start_line, end_line = func_info
+        else:
+            raise ValueError("Either line_number or start_line must be provided")
 
         # Find all function calls within this function
         calls = self._find_function_calls(tree, query, start_line, end_line)
@@ -294,7 +302,7 @@ class CallStackGenerator:
         with open(output_file, 'w') as f:
             json.dump(call_stack, f, indent=2)
 
-    def get_function_content(self, file_url: str, line_number: int) -> str:
+    def get_function_content_by_line(self, file_url: str, line_number: int) -> str:
         """Get the content of the function containing the specified line.
 
         Args:
@@ -308,6 +316,70 @@ class CallStackGenerator:
             ValueError: If no function is found or file type is unsupported
         """
         lang = self._detect_language(file_url)
+        return self._get_function_content(file_url, lang, line_number=line_number)
+
+    def get_function_content_by_name(self, repo_tree_path: str, function_name: str) -> str:
+        """Get the content of a function by its name using the repository tree.
+
+        Args:
+            repo_tree_path: Path to the repository tree JSON file
+            function_name: Name of the function to find
+
+        Returns:
+            str: Content of the function
+
+        Raises:
+            ValueError: If no function is found with the given name
+        """
+        # Load repo tree
+        with open(repo_tree_path) as f:
+            repo_tree = json.load(f)
+
+        # Get repository URL from metadata
+        if 'metadata' not in repo_tree or 'url' not in repo_tree['metadata']:
+            raise ValueError("Invalid repository tree file: missing metadata.url")
+
+        # Search for function in all files
+        for file_path, file_data in repo_tree['files'].items():
+            if 'ast' not in file_data or 'functions' not in file_data['ast']:
+                continue
+
+            functions = file_data['ast']['functions']
+            if function_name in functions:
+                function_info = functions[function_name]
+                # Get ref from metadata
+                if 'ref' not in repo_tree['metadata']:
+                    raise ValueError("Repository tree is missing ref in metadata")
+                ref = repo_tree['metadata']['ref']
+                file_url = f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
+                lang = file_data['language']
+                return self._get_function_content(
+                    file_url, lang, start_line=function_info['start_line']
+                )
+
+        raise ValueError(f"No function found with name: {function_name}")
+
+    def _get_function_content(
+        self,
+        file_url: str,
+        lang: str,
+        line_number: Optional[int] = None,
+        start_line: Optional[int] = None,
+    ) -> str:
+        """Internal method to get function content either by line number or start line.
+
+        Args:
+            file_url: URL to the target file
+            lang: Programming language
+            line_number: Optional line number within function
+            start_line: Optional start line of function
+
+        Returns:
+            str: Content of the function
+
+        Raises:
+            ValueError: If no function is found or file type is unsupported
+        """
         if not lang or lang not in self.parsers:
             raise ValueError(f"Unsupported file type: {file_url}")
 
@@ -318,12 +390,21 @@ class CallStackGenerator:
         parser = self.parsers[lang]
         tree = parser.parse(bytes(content, 'utf8'))
 
-        # Find the function containing the target line
-        func_info = self._find_function_at_line(tree, line_number)
-        if not func_info:
-            raise ValueError(f"No function found at line {line_number}")
-
-        func_name, start_line, end_line = func_info
+        # Get function start and end lines
+        if line_number is not None:
+            # Find the function containing the target line
+            func_info = self._find_function_at_line(tree, line_number)
+            if not func_info:
+                raise ValueError(f"No function found at line {line_number}")
+            func_name, start_line, end_line = func_info
+        elif start_line is not None:
+            # Use the provided start line and find the function there
+            func_info = self._find_function_at_line(tree, start_line)
+            if not func_info:
+                raise ValueError(f"No function found at line {start_line}")
+            func_name, start_line, end_line = func_info
+        else:
+            raise ValueError("Either line_number or start_line must be provided")
 
         # Get the function content by extracting the lines
         lines = content.splitlines()

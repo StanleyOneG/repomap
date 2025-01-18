@@ -1,6 +1,7 @@
 """Module for generating repository AST tree."""
 
 import os
+import logging
 from typing import Dict, Optional, Any, List
 import json
 import gitlab
@@ -9,6 +10,7 @@ from .config import settings
 from .core import fetch_repo_structure, GitLabFetcher
 from .callstack import CallStackGenerator
 
+logger = logging.getLogger(__name__)
 
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
@@ -367,11 +369,29 @@ class RepoTreeGenerator:
         Returns:
             Dict[str, Any]: Repository AST tree data
         """
+        # Get repository structure using GitLabFetcher
+        fetcher = GitLabFetcher(token=self.token)
+        
+        # Get project's default branch
+        try:
+            group_path, project_name = fetcher._get_project_parts(repo_url)
+            project_path = f"{group_path}/{project_name}"
+            project = self.gl.projects.get(project_path)
+            ref = project.default_branch
+        except Exception as e:
+            logger.warning(f"Failed to get default branch: {e}")
+            ref = 'master'
 
         # Fetch repository structure
-        repo_structure = fetch_repo_structure(repo_url, self.token)
+        repo_structure = fetcher.fetch_repo_structure(repo_url)
 
-        repo_tree = {"metadata": {"url": repo_url}, "files": {}}
+        repo_tree = {
+            "metadata": {
+                "url": repo_url,
+                "ref": ref
+            },
+            "files": {}
+        }
 
         def process_files(structure: Dict[str, Any], current_path: str = ""):
             """Recursively process files in repository structure."""
@@ -387,20 +407,9 @@ class RepoTreeGenerator:
                             # Only process supported file types
                             lang = self._detect_language(path)
                             if lang:
-                                # Extract project path from URL
-                                fetcher = GitLabFetcher(self.token)
-                                group_path, project_name = fetcher._get_project_parts(
-                                    repo_url
-                                )
-                                project_path = f"{group_path}/{project_name}"
-
-                                # Get project's default branch
-                                project = self.gl.projects.get(project_path)
-                                default_branch = project.default_branch or 'master'
-
-                                # Get file content using default branch
+                                # Get file content using the correct ref
                                 content = self._get_file_content(
-                                    f"{repo_url}/-/blob/{default_branch}/{path}"
+                                    f"{repo_url}/-/blob/{ref}/{path}"
                                 )
                                 if content:
                                     ast_data = self._parse_file_ast(content, lang)
