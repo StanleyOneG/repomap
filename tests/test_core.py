@@ -1,9 +1,10 @@
 """Tests for core functionality."""
 
-import pytest
 import unittest
 from unittest.mock import Mock, patch
+
 import gitlab
+import pytest
 
 from repomap.core import GitLabFetcher, fetch_repo_structure
 

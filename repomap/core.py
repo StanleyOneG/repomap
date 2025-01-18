@@ -1,9 +1,10 @@
 """Core functionality for fetching and processing GitLab repositories."""
 
-from typing import Dict, Optional
 import logging
+from typing import Dict, Optional
+from urllib.parse import quote, urlparse
+
 import gitlab
-from urllib.parse import urlparse, quote
 
 from .config import settings
 

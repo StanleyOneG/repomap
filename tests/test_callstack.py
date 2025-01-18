@@ -1,8 +1,9 @@
 """Tests for call stack generation functionality."""
 
 import json
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 from repomap.callstack import CallStackGenerator
 from repomap.config import settings
@@ -318,10 +319,7 @@ def test_get_function_content(mock_gitlab):
 
 # Mock data for testing
 MOCK_REPO_TREE = {
-    "metadata": {
-        "url": "https://example.com/group/repo",
-        "ref": "main"
-    },
+    "metadata": {"url": "https://example.com/group/repo", "ref": "main"},
     "files": {
         "alsalisp/alsalisp.c": {
             "language": "c",
@@ -332,13 +330,14 @@ MOCK_REPO_TREE = {
                         "start_line": 34,
                         "end_line": 70,
                         "class": None,
-                        "calls": []
+                        "calls": [],
                     }
                 }
-            }
+            },
         }
-    }
+    },
 }
+
 
 @pytest.fixture
 def mock_repo_tree_file(tmp_path):
@@ -348,15 +347,17 @@ def mock_repo_tree_file(tmp_path):
         json.dump(MOCK_REPO_TREE, f)
     return str(file_path)
 
+
 @pytest.fixture
 def mock_generator(monkeypatch):
     """Create a CallStackGenerator with mocked file content."""
+
     def mock_get_file_content(self, file_url):
         return """int interpret_filename(const char *filename)
 {
     int err;
     struct alisp_cfg cfg;
-    
+
     memset(&cfg, 0, sizeof(cfg));
     if (strcmp(filename, "-") == 0) {
         err = snd_input_stdio_attach(&cfg.in, stdin, 0);
@@ -392,16 +393,25 @@ def mock_generator(monkeypatch):
     monkeypatch.setattr(CallStackGenerator, "_get_file_content", mock_get_file_content)
     return CallStackGenerator()
 
+
 def test_get_function_content_by_name(mock_repo_tree_file, mock_generator):
     """Test getting function content by name."""
-    content = mock_generator.get_function_content_by_name(mock_repo_tree_file, "interpret_filename")
+    content = mock_generator.get_function_content_by_name(
+        mock_repo_tree_file, "interpret_filename"
+    )
     assert "int interpret_filename(const char *filename)" in content
     assert "return err;" in content
 
+
 def test_get_function_content_by_name_not_found(mock_repo_tree_file, mock_generator):
     """Test error when function name is not found."""
-    with pytest.raises(ValueError, match="No function found with name: nonexistent_function"):
-        mock_generator.get_function_content_by_name(mock_repo_tree_file, "nonexistent_function")
+    with pytest.raises(
+        ValueError, match="No function found with name: nonexistent_function"
+    ):
+        mock_generator.get_function_content_by_name(
+            mock_repo_tree_file, "nonexistent_function"
+        )
+
 
 def test_get_function_content_by_name_invalid_tree(tmp_path):
     """Test error with invalid repo tree file."""
@@ -409,7 +419,9 @@ def test_get_function_content_by_name_invalid_tree(tmp_path):
     file_path = tmp_path / "invalid_tree.json"
     with open(file_path, "w") as f:
         json.dump({}, f)
-    
+
     generator = CallStackGenerator()
-    with pytest.raises(ValueError, match="Invalid repository tree file: missing metadata.url"):
+    with pytest.raises(
+        ValueError, match="Invalid repository tree file: missing metadata.url"
+    ):
         generator.get_function_content_by_name(str(file_path), "any_function")

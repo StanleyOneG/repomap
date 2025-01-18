@@ -1,8 +1,10 @@
 """Tests for repository AST tree generation."""
 
 import json
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+
 from repomap.repo_tree import RepoTreeGenerator
 
 

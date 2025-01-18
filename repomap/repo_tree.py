@@ -1,16 +1,19 @@
 """Module for generating repository AST tree."""
 
-import os
-import logging
-from typing import Dict, Optional, Any, List
 import json
+import logging
+import os
+from typing import Any, Dict, List, Optional
+
 import gitlab
 from tree_sitter import Node
-from .config import settings
-from .core import fetch_repo_structure, GitLabFetcher
+
 from .callstack import CallStackGenerator
+from .config import settings
+from .core import GitLabFetcher
 
 logger = logging.getLogger(__name__)
+
 
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
@@ -371,7 +374,7 @@ class RepoTreeGenerator:
         """
         # Get repository structure using GitLabFetcher
         fetcher = GitLabFetcher(token=self.token)
-        
+
         # Get project's default branch
         try:
             group_path, project_name = fetcher._get_project_parts(repo_url)
@@ -385,13 +388,7 @@ class RepoTreeGenerator:
         # Fetch repository structure
         repo_structure = fetcher.fetch_repo_structure(repo_url)
 
-        repo_tree = {
-            "metadata": {
-                "url": repo_url,
-                "ref": ref
-            },
-            "files": {}
-        }
+        repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
 
         def process_files(structure: Dict[str, Any], current_path: str = ""):
             """Recursively process files in repository structure."""

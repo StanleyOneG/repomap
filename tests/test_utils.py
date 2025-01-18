@@ -2,11 +2,12 @@
 
 import json
 import logging
-import pytest
 from pathlib import Path
-from unittest.mock import patch, mock_open
+from unittest.mock import mock_open, patch
 
-from repomap.utils import store_repo_map, load_repo_map, setup_logging
+import pytest
+
+from repomap.utils import load_repo_map, setup_logging, store_repo_map
 
 
 @pytest.fixture
@@ -53,6 +54,7 @@ def test_store_repo_map(sample_repo_map, tmp_path):
     with open(test_output, "r", encoding="utf-8") as f:
         stored_data = json.load(f)
         assert stored_data == sample_repo_map
+
 
 def test_store_repo_map_error_handling(sample_repo_map):
     """Test error handling when storing repository map."""

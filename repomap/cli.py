@@ -8,15 +8,15 @@ import sys
 from typing import Optional
 
 from repomap import __version__
-from repomap.core import fetch_repo_structure
-from repomap.utils import store_repo_map, setup_logging
 from repomap.callstack import CallStackGenerator
+from repomap.core import fetch_repo_structure
 from repomap.repo_tree import RepoTreeGenerator
+from repomap.utils import setup_logging, store_repo_map
 
 logger = logging.getLogger(__name__)
 
 
-def parse_args(args=None) -> argparse.Namespace:
+def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
     """Parse command line arguments.
 
     Args:
@@ -108,7 +108,9 @@ def parse_args(args=None) -> argparse.Namespace:
             parser.error("--print-function requires --target-file and --line")
     elif args.print_function_by_name:
         if not all([args.name, args.repo_tree_path]):
-            parser.error("--print-function-by-name requires --name and --repo-tree-path")
+            parser.error(
+                "--print-function-by-name requires --name and --repo-tree-path"
+            )
     elif args.repo_tree:
         # Generate repository AST tree
         logger.info(f"Generating repository AST tree for {args.repo_url}")
@@ -150,7 +152,9 @@ def main() -> Optional[int]:  # noqa: C901
             try:
                 if args.print_function:
                     # Print function content by line
-                    logger.info(f"Getting function content for {args.target_file}:{args.line}")
+                    logger.info(
+                        f"Getting function content for {args.target_file}:{args.line}"
+                    )
                     function_content = generator.get_function_content_by_line(
                         args.target_file, args.line
                     )

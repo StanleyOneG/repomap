@@ -1,11 +1,13 @@
 """Module for generating call stacks using tree-sitter."""
 
+import json
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-import json
+
 import gitlab
 from tree_sitter_languages import get_language, get_parser
+
 from .config import settings
 
 
@@ -318,7 +320,9 @@ class CallStackGenerator:
         lang = self._detect_language(file_url)
         return self._get_function_content(file_url, lang, line_number=line_number)
 
-    def get_function_content_by_name(self, repo_tree_path: str, function_name: str) -> str:
+    def get_function_content_by_name(
+        self, repo_tree_path: str, function_name: str
+    ) -> str:
         """Get the content of a function by its name using the repository tree.
 
         Args:
