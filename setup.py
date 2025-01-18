@@ -26,10 +26,14 @@ setup(
     ],
     python_requires=">=3.11",
     install_requires=[
+        "requests>=2.32.3",
+        "types-requests>=2.32.0.20241016",
         "python-gitlab>=4.4.0",
+        "python-dotenv>=1.0.1",
+        "pydantic-settings>=2.7.1",
+        "setuptools>=75.8.0",
         "tree-sitter-languages>=1.10.2",
         "tree-sitter>=0.21.3",
-        "python-dotenv>=1.0.1",
     ],
     entry_points={
         "console_scripts": [
