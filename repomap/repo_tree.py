@@ -2,8 +2,9 @@
 
 import json
 import logging
+import multiprocessing
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import gitlab
 from tree_sitter import Node
@@ -18,15 +19,17 @@ logger = logging.getLogger(__name__)
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
 
-    def __init__(self, token: Optional[str] = None):
+    def __init__(self, token: Optional[str] = None, use_multiprocessing: bool = True):
         """Initialize the repository tree generator.
 
         Args:
             token: Optional GitLab access token for authentication
+            use_multiprocessing: Whether to use multiprocessing for file processing
         """
         self.token = token or (
             settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None
         )
+        self.use_multiprocessing = use_multiprocessing
         self.call_stack_gen = CallStackGenerator(token=self.token)
         self.parsers = self.call_stack_gen.parsers
         self.queries = self.call_stack_gen.queries
@@ -363,6 +366,40 @@ class RepoTreeGenerator:
 
         return ast_data
 
+    @staticmethod
+    def _process_file_worker(
+        file_info: Tuple[str, Dict[str, Any], str, str, Optional[str]]
+    ) -> Tuple[str, Optional[Dict[str, Any]]]:
+        """Process a single file and return its AST data.
+
+        Args:
+            file_info: Tuple containing (path, item, repo_url, ref, token)
+
+        Returns:
+            Tuple[str, Optional[Dict[str, Any]]]: File path and its AST data if successful
+        """
+        path, item, repo_url, ref, token = file_info
+        
+        # Create a new instance for this process
+        processor = RepoTreeGenerator(token=token)
+        try:
+            # Only process supported file types
+            lang = processor._detect_language(path)
+            if lang:
+                # Get file content using the correct ref
+                content = processor._get_file_content(
+                    f"{repo_url}/-/blob/{ref}/{path}"
+                )
+                if content:
+                    ast_data = processor._parse_file_ast(content, lang)
+                    return path, {
+                        "language": lang,
+                        "ast": ast_data,
+                    }
+        except Exception as e:
+            print(f"Failed to process {path}: {e}")
+        return path, None
+
     def generate_repo_tree(  # noqa: C901
         self, repo_url: str, ref: Optional[str] = None
     ) -> Dict[str, Any]:
@@ -420,8 +457,11 @@ class RepoTreeGenerator:
 
         repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
 
-        def process_files(structure: Dict[str, Any], current_path: str = ""):
-            """Recursively process files in repository structure."""
+        # Collect all files to process
+        files_to_process = []
+
+        def collect_files(structure: Dict[str, Any], current_path: str = ""):
+            """Recursively collect files from repository structure."""
             if not isinstance(structure, dict):
                 return
 
@@ -430,27 +470,47 @@ class RepoTreeGenerator:
 
                 if isinstance(item, dict):
                     if "type" in item and item["type"] == "blob":
-                        try:
-                            # Only process supported file types
-                            lang = self._detect_language(path)
-                            if lang:
-                                # Get file content using the correct ref
-                                content = self._get_file_content(
-                                    f"{repo_url}/-/blob/{ref}/{path}"
-                                )
-                                if content:
-                                    ast_data = self._parse_file_ast(content, lang)
-                                    repo_tree["files"][path] = {
-                                        "language": lang,
-                                        "ast": ast_data,
-                                    }
-                        except Exception as e:
-                            print(f"Failed to process {path}: {e}")
+                        files_to_process.append((path, item, repo_url, ref))
                     else:
                         # This is a directory
-                        process_files(item, path)
+                        collect_files(item, path)
 
-        process_files(repo_structure)
+        collect_files(repo_structure)
+
+        # Process files
+        if self.use_multiprocessing and len(files_to_process) > 0:
+            # Process in parallel
+            num_processes = min(multiprocessing.cpu_count(), len(files_to_process))
+            # Add token to file_info for worker processes
+            files_to_process_mp = [(path, item, repo_url, ref, self.token) 
+                                 for path, item, repo_url, ref in files_to_process]
+            
+            with multiprocessing.Pool(processes=num_processes) as pool:
+                results = pool.map(RepoTreeGenerator._process_file_worker, files_to_process_mp)
+                
+                # Add successful results to repo_tree
+                for path, data in results:
+                    if data is not None:
+                        repo_tree["files"][path] = data
+        else:
+            # Process sequentially (for testing or small number of files)
+            for path, item, repo_url, ref in files_to_process:
+                try:
+                    # Only process supported file types
+                    lang = self._detect_language(path)
+                    if lang:
+                        # Get file content using the correct ref
+                        content = self._get_file_content(
+                            f"{repo_url}/-/blob/{ref}/{path}"
+                        )
+                        if content:
+                            ast_data = self._parse_file_ast(content, lang)
+                            repo_tree["files"][path] = {
+                                "language": lang,
+                                "ast": ast_data,
+                            }
+                except Exception as e:
+                    print(f"Failed to process {path}: {e}")
         return repo_tree
 
     def save_repo_tree(self, repo_tree: Dict[str, Any], output_path: str):

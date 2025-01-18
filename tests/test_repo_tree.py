@@ -22,8 +22,8 @@ def repo_tree_generator():
             mock_gl.projects.get.return_value = mock_project
             mock_gitlab.return_value = mock_gl
 
-            generator = RepoTreeGenerator()
-            # generator.token = "mock-token"  # Set mock token to avoid auth issues
+            # Disable multiprocessing for testing to avoid pickling issues with mocks
+            generator = RepoTreeGenerator(use_multiprocessing=False)
             return generator
 
 
