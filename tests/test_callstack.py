@@ -8,7 +8,8 @@ from repomap.callstack import CallStackGenerator
 # Mock data for testing
 MOCK_REPO_TREE = {
     "metadata": {
-        "url": "https://git-testing.devsec.astralinux.ru/astra/alsa-lib"
+        "url": "https://example.com/group/repo",
+        "ref": "main"
     },
     "files": {
         "alsalisp/alsalisp.c": {
