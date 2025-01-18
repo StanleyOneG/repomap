@@ -381,7 +381,7 @@ class RepoTreeGenerator:
             Tuple[str, Optional[Dict[str, Any]]]: File path and its AST data if successful
         """
         path, item, repo_url, ref, token = file_info
-        
+
         # Create a new instance for this process
         processor = RepoTreeGenerator(token=token)
         try:
@@ -389,9 +389,7 @@ class RepoTreeGenerator:
             lang = processor._detect_language(path)
             if lang:
                 # Get file content using the correct ref
-                content = processor._get_file_content(
-                    f"{repo_url}/-/blob/{ref}/{path}"
-                )
+                content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
                 if content:
                     ast_data = processor._parse_file_ast(content, lang)
                     return path, {
@@ -491,12 +489,16 @@ class RepoTreeGenerator:
             # Process in parallel
             num_processes = min(multiprocessing.cpu_count(), len(files_to_process))
             # Add token to file_info for worker processes
-            files_to_process_mp = [(path, item, repo_url, ref, self.token) 
-                                 for path, item, repo_url, ref in files_to_process]
-            
+            files_to_process_mp = [
+                (path, item, repo_url, ref, self.token)
+                for path, item, repo_url, ref in files_to_process
+            ]
+
             with multiprocessing.Pool(processes=num_processes) as pool:
-                results = pool.map(RepoTreeGenerator._process_file_worker, files_to_process_mp)
-                
+                results = pool.map(
+                    RepoTreeGenerator._process_file_worker, files_to_process_mp
+                )
+
                 # Add successful results to repo_tree
                 for path, data in results:
                     if data is not None:

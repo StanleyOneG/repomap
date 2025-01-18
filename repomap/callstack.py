@@ -91,9 +91,9 @@ class CallStackGenerator:
             parsed = urlparse(file_url)
             if not parsed.scheme or not parsed.netloc:
                 return None
-                
+
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            remaining_path = file_url[len(base_url):].strip('/')
+            remaining_path = file_url[len(base_url) :].strip('/')
 
             # Split into project path and file info
             parts = remaining_path.split('/-/')

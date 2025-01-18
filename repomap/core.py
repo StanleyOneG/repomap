@@ -25,7 +25,9 @@ class GitLabFetcher:
         """
         # If base_url is provided, use it. Otherwise, it will be detected from the first repository URL
         self.base_url = base_url.rstrip('/') if base_url is not None else None
-        self.token = token or (settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None)
+        self.token = token or (
+            settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None
+        )
         # GitLab client will be initialized when needed since we may need to detect base_url first
         self.gl = None
 
@@ -62,7 +64,7 @@ class GitLabFetcher:
             else:
                 # Otherwise detect from repo URL
                 self.base_url = self._get_base_url_from_repo_url(repo_url)
-        
+
         if not self.gl:
             self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
 
@@ -120,7 +122,7 @@ class GitLabFetcher:
         try:
             # Initialize GitLab client if needed
             self._ensure_gitlab_client(repo_url)
-            
+
             group_path, project_name = self._get_project_parts(repo_url)
 
             # Get project instance using the full path
