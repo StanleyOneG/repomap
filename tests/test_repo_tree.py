@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+import gitlab
 
 from repomap.repo_tree import RepoTreeGenerator
 
@@ -104,6 +105,20 @@ def mock_gitlab():
         mock_project = MagicMock()
         mock_gl.projects.get.return_value = mock_project
         mock_project.default_branch = 'main'
+        
+        # Mock branches, tags, and commits for ref validation
+        mock_branches = MagicMock()
+        mock_branches.get.side_effect = lambda ref: MagicMock() if ref == 'dev' else gitlab.exceptions.GitlabGetError()
+        mock_project.branches = mock_branches
+        
+        mock_tags = MagicMock()
+        mock_tags.get.side_effect = lambda ref: MagicMock() if ref == 'v1.0' else gitlab.exceptions.GitlabGetError()
+        mock_project.tags = mock_tags
+        
+        mock_commits = MagicMock()
+        mock_commits.get.side_effect = lambda ref: MagicMock() if ref == 'abc123' else gitlab.exceptions.GitlabGetError()
+        mock_project.commits = mock_commits
+        
         return mock
 
 
@@ -429,3 +444,111 @@ def test_generate_repo_tree_with_failed_content_fetch(mock_gitlab, repo_tree_gen
 
         # Verify file was skipped
         assert len(repo_tree["files"]) == 0
+
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_custom_ref(mock_gitlab, repo_tree_generator, mock_python_content):
+    """Test repository AST tree generation with custom ref."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    
+    # Mock branches
+    mock_branches = MagicMock()
+    mock_branches.get.side_effect = lambda ref: MagicMock() if ref == 'dev' else gitlab.exceptions.GitlabGetError()
+    mock_project.branches = mock_branches
+    
+    # Mock repository tree
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "main.py",
+            "type": "blob",
+            "path": "src/main.py",
+            "mode": "100644",
+        }
+    ]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo",
+            ref='dev'
+        )
+
+    # Verify repository tree structure and ref
+    assert repo_tree["metadata"]["ref"] == "dev"
+    assert "src/main.py" in repo_tree["files"]
+
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
+    """Test repository AST tree generation with invalid ref."""
+    # Setup mock project with invalid ref
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    
+    # Mock branches, tags, and commits to all fail
+    mock_branches = MagicMock()
+    mock_branches.get.side_effect = gitlab.exceptions.GitlabGetError()
+    mock_project.branches = mock_branches
+    
+    mock_tags = MagicMock()
+    mock_tags.get.side_effect = gitlab.exceptions.GitlabGetError()
+    mock_project.tags = mock_tags
+    
+    mock_commits = MagicMock()
+    mock_commits.get.side_effect = gitlab.exceptions.GitlabGetError()
+    mock_project.commits = mock_commits
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Verify ValueError is raised for invalid ref
+    with pytest.raises(ValueError, match="No ref found in repository by name: invalid-ref"):
+        repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo",
+            ref='invalid-ref'
+        )
+
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_default_ref(mock_gitlab, repo_tree_generator, mock_python_content):
+    """Test repository AST tree generation with default ref."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "main.py",
+            "type": "blob",
+            "path": "src/main.py",
+            "mode": "100644",
+        }
+    ]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo"  # No ref provided
+        )
+
+    # Verify default branch is used
+    assert repo_tree["metadata"]["ref"] == "main"
+    assert "src/main.py" in repo_tree["files"]

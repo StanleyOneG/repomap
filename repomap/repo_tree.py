@@ -363,24 +363,45 @@ class RepoTreeGenerator:
 
         return ast_data
 
-    def generate_repo_tree(self, repo_url: str) -> Dict[str, Any]:  # noqa: C901
+    def generate_repo_tree(self, repo_url: str, ref: Optional[str] = None) -> Dict[str, Any]:  # noqa: C901
         """Generate repository AST tree.
 
         Args:
             repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit). If not provided, uses default branch.
 
         Returns:
             Dict[str, Any]: Repository AST tree data
+
+        Raises:
+            ValueError: If provided ref does not exist in the repository
         """
         # Get repository structure using GitLabFetcher
         fetcher = GitLabFetcher(token=self.token)
 
-        # Get project's default branch
+        # Get project and validate ref if provided
         try:
             group_path, project_name = fetcher._get_project_parts(repo_url)
             project_path = f"{group_path}/{project_name}"
             project = self.gl.projects.get(project_path)
-            ref = project.default_branch
+            
+            if ref:
+                # Check if ref exists
+                try:
+                    project.branches.get(ref)
+                except gitlab.exceptions.GitlabGetError:
+                    try:
+                        project.tags.get(ref)
+                    except gitlab.exceptions.GitlabGetError:
+                        try:
+                            project.commits.get(ref)
+                        except gitlab.exceptions.GitlabGetError:
+                            raise ValueError(f"No ref found in repository by name: {ref}")
+            else:
+                # Use default branch if no ref provided
+                ref = project.default_branch
+        except ValueError as e:
+            raise e
         except Exception as e:
             logger.warning(f"Failed to get default branch: {e}")
             ref = 'master'

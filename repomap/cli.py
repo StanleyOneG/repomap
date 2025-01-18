@@ -57,6 +57,9 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
     parser.add_argument(
         "--repo-tree", action="store_true", help="Generate repository AST tree"
     )
+    parser.add_argument(
+        "--ref", help="Git reference (branch, tag, commit) to use for repository AST tree"
+    )
 
     # Call stack arguments
     parser.add_argument(
@@ -112,15 +115,19 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
                 "--print-function-by-name requires --name and --repo-tree-path"
             )
     elif args.repo_tree:
-        # Generate repository AST tree
-        logger.info(f"Generating repository AST tree for {args.repo_url}")
-        generator = RepoTreeGenerator(args.token)
-        repo_tree = generator.generate_repo_tree(args.repo_url)
+        try:
+            # Generate repository AST tree
+            logger.info(f"Generating repository AST tree for {args.repo_url}")
+            generator = RepoTreeGenerator(args.token)
+            repo_tree = generator.generate_repo_tree(args.repo_url, args.ref)
 
-        # Save repository AST tree
-        generator.save_repo_tree(repo_tree, args.output)
-        logger.info(f"Repository AST tree saved to {args.output}")
-        return 0
+            # Save repository AST tree
+            generator.save_repo_tree(repo_tree, args.output)
+            logger.info(f"Repository AST tree saved to {args.output}")
+            return 0
+        except ValueError as e:
+            logger.error(str(e))
+            return 1
 
     elif args.call_stack:
         if not all([args.target_file, args.line]):
