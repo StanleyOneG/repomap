@@ -27,6 +27,7 @@ python-dotenv = "^1.0.1"
 python-gitlab = "^4.4.0"
 pydantic-settings = "^2.7.1"
 setuptools = "^75.8.0"
+pygithub = "^2.5.0"
 
 
 [tool.poetry.scripts]

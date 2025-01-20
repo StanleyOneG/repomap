@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
-import gitlab
 from tree_sitter_languages import get_language, get_parser
 
 from .config import settings
+from .providers import get_provider
 
 
 class CallStackGenerator:
@@ -40,9 +40,8 @@ class CallStackGenerator:
         )
         self.parsers = {}
         self.queries = {}
-        self.token = token or (
-            settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None
-        )
+        self.token = token
+        self.provider = None  # Will be initialized when needed based on repo URL
         self._init_parsers()
 
     def _load_structure(self, structure_file: Optional[str]) -> dict:
@@ -76,65 +75,6 @@ class CallStackGenerator:
             except Exception as e:
                 print(f"Failed to initialize parser for {lang}: {e}")
 
-    def _get_gitlab_content(self, file_url: str) -> Optional[str]:
-        """Fetch content from GitLab URL.
-
-        Args:
-            file_url: GitLab URL to the file
-
-        Returns:
-            str: File content or None if failed
-        """
-        try:
-            # Remove the base URL to get the project path and file info
-            # Extract base URL from file URL
-            parsed = urlparse(file_url)
-            if not parsed.scheme or not parsed.netloc:
-                return None
-
-            base_url = f"{parsed.scheme}://{parsed.netloc}"
-            remaining_path = file_url[len(base_url) :].strip('/')
-
-            # Split into project path and file info
-            parts = remaining_path.split('/-/')
-            if len(parts) != 2:
-                return None
-
-            project_path = parts[0].strip('/')  # e.g., "group/repo"
-            file_info = parts[1].strip('/')  # e.g., "blob/ref/some_dir/some_file.c"
-
-            # Parse file info to get ref and file path
-            file_parts = file_info.split('/')
-            if len(file_parts) < 3 or file_parts[0] != 'blob':
-                return None
-
-            ref = file_parts[1]  # e.g., "main"
-            file_path = '/'.join(file_parts[2:])  # e.g., "some_dir/some_file.c"
-
-            print("Parsed URL components:")
-            print(f"  Project path: {project_path}")
-            print(f"  Ref: {ref}")
-            print(f"  File path: {file_path}")
-
-            # Initialize GitLab client with detected base URL
-            gl = gitlab.Gitlab(base_url, private_token=self.token)
-
-            try:
-                project = gl.projects.get(project_path)
-            except gitlab.exceptions.GitlabGetError:
-                # If direct path fails, try with URL encoding
-                from urllib.parse import quote
-
-                encoded_path = quote(project_path, safe='')
-                project = gl.projects.get(encoded_path)
-
-            # Get file content
-            f = project.files.get(file_path=file_path, ref=ref)
-            return f.decode().decode('utf-8')
-        except Exception as e:
-            print(f"Failed to fetch GitLab content: {e}")
-            return None
-
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL.
 
@@ -145,11 +85,10 @@ class CallStackGenerator:
             str: File content or None if failed
         """
         try:
-            # First try GitLab-specific handling
-            content = self._get_gitlab_content(file_url)
-            # if content is not None:
-            return content
-
+            # Initialize provider if needed
+            if not self.provider:
+                self.provider = get_provider(file_url, self.token)
+            return self.provider.get_file_content(file_url)
         except Exception as e:
             print(f"Failed to fetch file content from {file_url}: {e}")
             return None

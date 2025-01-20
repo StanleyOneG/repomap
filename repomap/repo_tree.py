@@ -6,12 +6,11 @@ import multiprocessing
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
-import gitlab
 from tree_sitter import Node
 
 from .callstack import CallStackGenerator
 from .config import settings
-from .core import GitLabFetcher
+from .providers import get_provider
 
 logger = logging.getLogger(__name__)
 
@@ -26,16 +25,12 @@ class RepoTreeGenerator:
             token: Optional GitLab access token for authentication
             use_multiprocessing: Whether to use multiprocessing for file processing
         """
-        self.token = token or (
-            settings.GITLAB_TOKEN.get_secret_value() if settings.GITLAB_TOKEN else None
-        )
+        self.token = token
         self.use_multiprocessing = use_multiprocessing
         self.call_stack_gen = CallStackGenerator(token=self.token)
         self.parsers = self.call_stack_gen.parsers
         self.queries = self.call_stack_gen.queries
-        # GitLab client will be initialized when needed since we may need to detect base_url first
-        self.gl = None
-        self.base_url = None
+        self.provider = None  # Will be initialized when needed based on repo URL
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -415,39 +410,13 @@ class RepoTreeGenerator:
         Raises:
             ValueError: If provided ref does not exist in the repository
         """
-        # Get repository structure using GitLabFetcher
-        fetcher = GitLabFetcher(token=self.token)
+        # Initialize provider if needed
+        if not self.provider:
+            self.provider = get_provider(repo_url, self.token)
 
-        # Get project and validate ref if provided
+        # Validate ref and get default if not provided
         try:
-            # Initialize GitLab client if needed
-            if not self.gl:
-                # Get base URL from fetcher which will detect it from repo_url
-                fetcher._ensure_gitlab_client(repo_url)
-                self.base_url = fetcher.base_url
-                self.gl = gitlab.Gitlab(self.base_url, private_token=self.token)
-
-            group_path, project_name = fetcher._get_project_parts(repo_url)
-            project_path = f"{group_path}/{project_name}"
-            project = self.gl.projects.get(project_path)
-
-            if ref:
-                # Check if ref exists
-                try:
-                    project.branches.get(ref)
-                except gitlab.exceptions.GitlabGetError:
-                    try:
-                        project.tags.get(ref)
-                    except gitlab.exceptions.GitlabGetError:
-                        try:
-                            project.commits.get(ref)
-                        except gitlab.exceptions.GitlabGetError:
-                            raise ValueError(
-                                f"No ref found in repository by name: {ref}"
-                            )
-            else:
-                # Use default branch if no ref provided
-                ref = project.default_branch
+            ref = self.provider.validate_ref(repo_url, ref)
         except ValueError as e:
             raise e
         except Exception as e:
@@ -456,8 +425,8 @@ class RepoTreeGenerator:
 
         # Fetch repository structure
         try:
-            repo_structure = fetcher.fetch_repo_structure(repo_url, ref=ref)
-        except gitlab.exceptions.GitlabError as e:
+            repo_structure = self.provider.fetch_repo_structure(repo_url, ref=ref)
+        except Exception as e:
             if "not found or is empty" in str(e):
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
