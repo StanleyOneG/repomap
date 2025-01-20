@@ -77,6 +77,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.secrets*
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -84,3 +85,4 @@ venv.bak/
 # VS Code
 .vscode/
 *.code-workspace
+*.cache*
