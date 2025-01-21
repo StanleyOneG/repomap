@@ -87,7 +87,7 @@ def test_parse_args_print_function_missing_args():
 
 
 @patch('repomap.cli.CallStackGenerator')
-def test_main_print_function(mock_generator):
+def test_main_print_function(mock_generator, capsys):
     """Test main function with print-function feature."""
     # Setup mock generator
     mock_instance = MagicMock()
@@ -151,6 +151,59 @@ def test_main_call_stack(mock_generator):
         assert main() == 0
         mock_instance.generate_call_stack.assert_called_once_with('test.py', 1)
         mock_instance.save_call_stack.assert_called_once()
+
+
+@patch('repomap.cli.CallStackGenerator')
+def test_main_print_function_by_name(mock_generator, capsys):
+    """Test main function with print-function-by-name feature."""
+    # Setup mock generator
+    mock_instance = MagicMock()
+    mock_instance.get_function_content_by_name.return_value = {
+        "global": "def global_func():\n    pass\n",
+        "ClassA": "def class_method(self):\n    pass\n",
+        "ClassB": "def class_method(self):\n    return True\n",
+    }
+    mock_generator.return_value = mock_instance
+
+    # Test successful function printing with multiple implementations
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            '--print-function-by-name',
+            '--name',
+            'class_method',
+            '--repo-tree-path',
+            'repo_tree.json',
+        ],
+    ):
+        assert main() == 0
+        mock_instance.get_function_content_by_name.assert_called_once_with(
+            'repo_tree.json', 'class_method'
+        )
+        captured = capsys.readouterr()
+        assert "In class ClassA:" in captured.out
+        assert "In class ClassB:" in captured.out
+        assert "def class_method(self):" in captured.out
+
+    # Test function not found
+    mock_instance.get_function_content_by_name.side_effect = ValueError(
+        "No function found with name: nonexistent"
+    )
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            '--print-function-by-name',
+            '--name',
+            'nonexistent',
+            '--repo-tree-path',
+            'repo_tree.json',
+        ],
+    ):
+        assert main() == 1
+        captured = capsys.readouterr()
+        assert "No function found with name: nonexistent" in captured.err
 
 
 def test_print_function_by_name_args():

@@ -332,6 +332,27 @@ MOCK_REPO_TREE = {
                     }
                 }
             },
+        },
+        "src/classes.py": {
+            "language": "python",
+            "ast": {
+                "functions": {
+                    "ClassA.process": {
+                        "name": "process",
+                        "start_line": 10,
+                        "end_line": 15,
+                        "class": "ClassA",
+                        "calls": [],
+                    },
+                    "ClassB.process": {
+                        "name": "process",
+                        "start_line": 25,
+                        "end_line": 30,
+                        "class": "ClassB",
+                        "calls": [],
+                    }
+                }
+            },
         }
     },
 }
@@ -351,7 +372,8 @@ def mock_generator(monkeypatch):
     """Create a CallStackGenerator with mocked file content."""
 
     def mock_get_file_content(self, file_url):
-        return """int interpret_filename(const char *filename)
+        if "alsalisp/alsalisp.c" in file_url:
+            return """int interpret_filename(const char *filename)
 {
     int err;
     struct alisp_cfg cfg;
@@ -387,18 +409,43 @@ def mock_generator(monkeypatch):
     snd_input_close(cfg.in);
     return err;
 }"""
+        elif "src/classes.py" in file_url:
+            return """class ClassA:
+    def process(self):
+        print("Processing in ClassA")
+        return "ClassA result"
+
+class ClassB:
+    def process(self):
+        print("Processing in ClassB")
+        return "ClassB result"
+"""
+        return None
 
     monkeypatch.setattr(CallStackGenerator, "_get_file_content", mock_get_file_content)
     return CallStackGenerator()
 
 
-def test_get_function_content_by_name(mock_repo_tree_file, mock_generator):
-    """Test getting function content by name."""
-    content = mock_generator.get_function_content_by_name(
+def test_get_function_content_by_name_global(mock_repo_tree_file, mock_generator):
+    """Test getting global function content by name."""
+    result = mock_generator.get_function_content_by_name(
         mock_repo_tree_file, "interpret_filename"
     )
-    assert "int interpret_filename(const char *filename)" in content
-    assert "return err;" in content
+    assert len(result) == 1
+    assert "global" in result
+    assert "int interpret_filename(const char *filename)" in result["global"]
+    assert "return err;" in result["global"]
+
+def test_get_function_content_by_name_class_methods(mock_repo_tree_file, mock_generator):
+    """Test getting class method content by name."""
+    result = mock_generator.get_function_content_by_name(
+        mock_repo_tree_file, "process"
+    )
+    assert len(result) == 2
+    assert "ClassA" in result
+    assert "ClassB" in result
+    assert 'print("Processing in ClassA")' in result["ClassA"]
+    assert 'print("Processing in ClassB")' in result["ClassB"]
 
 
 def test_get_function_content_by_name_not_found(mock_repo_tree_file, mock_generator):

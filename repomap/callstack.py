@@ -270,15 +270,18 @@ class CallStackGenerator:
 
     def get_function_content_by_name(
         self, repo_tree_path: str, function_name: str
-    ) -> str:
+    ) -> Dict[str, str]:
         """Get the content of a function by its name using the repository tree.
+        If multiple functions with the same name exist in different classes,
+        returns content for all of them.
 
         Args:
             repo_tree_path: Path to the repository tree JSON file
-            function_name: Name of the function to find
+            function_name: Name of the function to find (without class prefix)
 
         Returns:
-            str: Content of the function
+            Dict[str, str]: Dictionary mapping class names (or 'global' for non-class functions)
+                           to function content strings
 
         Raises:
             ValueError: If no function is found with the given name
@@ -291,25 +294,38 @@ class CallStackGenerator:
         if 'metadata' not in repo_tree or 'url' not in repo_tree['metadata']:
             raise ValueError("Invalid repository tree file: missing metadata.url")
 
+        # Get ref from metadata
+        if 'ref' not in repo_tree['metadata']:
+            raise ValueError("Repository tree is missing ref in metadata")
+        ref = repo_tree['metadata']['ref']
+
         # Search for function in all files
+        found_functions = {}
         for file_path, file_data in repo_tree['files'].items():
             if 'ast' not in file_data or 'functions' not in file_data['ast']:
                 continue
 
             functions = file_data['ast']['functions']
-            if function_name in functions:
-                function_info = functions[function_name]
-                # Get ref from metadata
-                if 'ref' not in repo_tree['metadata']:
-                    raise ValueError("Repository tree is missing ref in metadata")
-                ref = repo_tree['metadata']['ref']
-                file_url = f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
-                lang = file_data['language']
-                return self._get_function_content(
-                    file_url, lang, start_line=function_info['start_line']
-                )
+            for func_key, func_info in functions.items():
+                # Check if this function matches the name we're looking for
+                if func_info['name'] == function_name:
+                    # Create file URL
+                    file_url = f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
+                    lang = file_data['language']
+                    
+                    # Get function content
+                    content = self._get_function_content(
+                        file_url, lang, start_line=func_info['start_line']
+                    )
+                    
+                    # Use class name as key, or 'global' for functions not in a class
+                    class_name = func_info['class'] if func_info['class'] else 'global'
+                    found_functions[class_name] = content
 
-        raise ValueError(f"No function found with name: {function_name}")
+        if not found_functions:
+            raise ValueError(f"No function found with name: {function_name}")
+
+        return found_functions
 
     def _get_function_content(
         self,

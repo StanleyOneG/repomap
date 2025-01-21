@@ -164,11 +164,21 @@ def main() -> Optional[int]:  # noqa: C901
                 else:
                     # Print function content by name
                     logger.info(f"Getting function content for {args.name}")
-                    function_content = generator.get_function_content_by_name(
+                    function_contents = generator.get_function_content_by_name(
                         args.repo_tree_path, args.name
                     )
-                print(function_content)
-                return 0
+                    
+                    # Print each function implementation with its class context
+                    for class_name, content in function_contents.items():
+                        if class_name == 'global':
+                            # For global functions (not in a class)
+                            print("Global function:")
+                            print(content)
+                        else:
+                            # For class methods
+                            print(f"\nIn class {class_name}:")
+                            print(content)
+                    return 0
             except ValueError as e:
                 logger.error(str(e))
                 return 1
