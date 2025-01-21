@@ -294,6 +294,117 @@ def test_generate_repo_tree_python(
     assert "_internal_transform" in transform_data_method["calls"]
 
 
+@pytest.fixture
+def mock_nested_python_content():
+    """Mock Python file content with nested class methods for testing."""
+    return """
+class ComplexClass:
+    def __init__(self):
+        self.data = None
+        
+    def outer_method(self):
+        def inner_function():
+            print("inner")
+        
+        inner_function()
+        self.helper_method()
+    
+    def helper_method(self):
+        self.process_data()
+        
+    def process_data(self):
+        if self.data:
+            self.validate()
+            self.transform()
+    
+    def validate(self):
+        print("validating")
+        
+    def transform(self):
+        print("transforming")
+
+class SimpleClass:
+    def method_one(self):
+        print("one")
+        
+    def method_two(self):
+        self.method_one()
+"""
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator, mock_nested_python_content):
+    """Test repository AST tree generation with nested class methods."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "complex.py",
+            "type": "blob",
+            "path": "src/complex.py",
+            "mode": "100644",
+        }
+    ]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_nested_python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+
+    # Verify repository tree structure
+    assert "src/complex.py" in repo_tree["files"]
+    file_data = repo_tree["files"]["src/complex.py"]
+    assert file_data["language"] == "python"
+
+    ast_data = file_data["ast"]
+    
+    # Verify ComplexClass methods
+    assert "ComplexClass" in ast_data["classes"]
+    complex_class = ast_data["classes"]["ComplexClass"]
+    complex_methods = complex_class["methods"]
+    assert "__init__" in complex_methods
+    assert "outer_method" in complex_methods
+    assert "helper_method" in complex_methods
+    assert "process_data" in complex_methods
+    assert "validate" in complex_methods
+    assert "transform" in complex_methods
+
+    # Verify SimpleClass methods
+    assert "SimpleClass" in ast_data["classes"]
+    simple_class = ast_data["classes"]["SimpleClass"]
+    simple_methods = simple_class["methods"]
+    assert "method_one" in simple_methods
+    assert "method_two" in simple_methods
+
+    # Verify method calls
+    functions = ast_data["functions"]
+    
+    # Check ComplexClass method calls
+    outer_method = functions["outer_method"]
+    assert outer_method["class"] == "ComplexClass"
+    assert "inner_function" in outer_method["calls"]
+    assert "helper_method" in outer_method["calls"]
+
+    helper_method = functions["helper_method"]
+    assert helper_method["class"] == "ComplexClass"
+    assert "process_data" in helper_method["calls"]
+
+    process_data = functions["process_data"]
+    assert process_data["class"] == "ComplexClass"
+    assert "validate" in process_data["calls"]
+    assert "transform" in process_data["calls"]
+
+    # Check SimpleClass method calls
+    method_two = functions["method_two"]
+    assert method_two["class"] == "SimpleClass"
+    assert "method_one" in method_two["calls"]
+
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
     # Create test data

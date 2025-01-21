@@ -14,6 +14,9 @@ from .providers import get_provider
 
 logger = logging.getLogger(__name__)
 
+# Set up debug logging
+logging.basicConfig(level=logging.DEBUG)
+
 
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
@@ -116,6 +119,12 @@ class RepoTreeGenerator:
                         # Also process the function node itself for decorators and defaults
                         calls.extend(self._find_function_calls(node, lang))
 
+                    # Log function discovery
+                    logger.debug(
+                        f"Found function: {func_name} in class: {current_class} "
+                        f"at lines {node.start_point[0]}-{node.end_point[0]}"
+                    )
+                    
                     functions[func_name] = {
                         "name": func_name,
                         "start_line": node.start_point[0],
@@ -165,17 +174,53 @@ class RepoTreeGenerator:
 
                 if body_node:
                     # Process class body with updated current_class
-                    for child in body_node.children:
-                        self._find_functions(child, functions, class_name, lang)
+                    # Process all nodes within the class body recursively
+                    def process_class_body(node: Node, class_name: str):
+                        """Process all nodes in class body to find methods."""
+                        # Log node type for debugging
+                        logger.debug(f"Processing node type {node.type} in class {class_name}")
+                        
+                        if node.type in ('function_definition', 'method_definition'):
+                            # This is a direct method definition
+                            self._find_functions(node, functions, class_name, lang)
+                        elif node.type == 'decorated_definition':
+                            # Handle decorated methods (including abstractmethod)
+                            is_abstract = False
+                            for child in node.children:
+                                if child.type == 'decorator':
+                                    for subchild in child.children:
+                                        if subchild.type == 'identifier':
+                                            decorator_name = subchild.text.decode('utf8')
+                                            if decorator_name == 'abstractmethod':
+                                                is_abstract = True
+                                                break
+                                elif child.type in ('function_definition', 'method_definition'):
+                                    # Process the method
+                                    self._find_functions(child, functions, class_name, lang)
+                                    if is_abstract:
+                                        # Log abstract method discovery
+                                        logger.debug(f"Found abstract method in class {class_name}")
+                        elif node.type == 'block':
+                            # Process all children in block
+                            for child in node.children:
+                                process_class_body(child, class_name)
+                        else:
+                            # Process all children recursively
+                            for child in node.children:
+                                process_class_body(child, class_name)
+                    
+                    # Start processing from the class body
+                    process_class_body(body_node, class_name)
 
-        # Continue traversing
-        for child in node.children:
-            if child.type not in (
-                'block',
-                'suite',
-                'compound_statement',
-            ):  # Skip blocks we've already processed
-                self._find_functions(child, functions, current_class, lang)
+        # Continue traversing if not in a class body
+        if not current_class:
+            for child in node.children:
+                if child.type not in (
+                    'block',
+                    'suite',
+                    'compound_statement',
+                ):  # Skip blocks we've already processed
+                    self._find_functions(child, functions, current_class, lang)
 
     def _find_function_calls(  # noqa: C901
         self, node: Node, lang: str = 'python'
@@ -315,15 +360,53 @@ class RepoTreeGenerator:
                             break
 
                 if class_name:
+                    # Log class discovery
+                    logger.debug(f"Found class: {class_name}")
+                    
+                    # Check for inheritance
+                    base_classes = []
+                    for child in node.children:
+                        if child.type == 'argument_list':
+                            for arg in child.children:
+                                if arg.type == 'identifier':
+                                    base_name = arg.text.decode('utf8')
+                                    base_classes.append(base_name)
+                                    logger.debug(f"Found base class: {base_name} for {class_name}")
+                                elif arg.type == 'attribute':
+                                    # Handle module.class style base classes
+                                    parts = []
+                                    current = arg
+                                    while current:
+                                        if current.type == 'identifier':
+                                            parts.insert(0, current.text.decode('utf8'))
+                                            break
+                                        elif current.type == 'attribute':
+                                            for subchild in reversed(current.children):
+                                                if subchild.type == 'identifier':
+                                                    parts.insert(0, subchild.text.decode('utf8'))
+                                                    break
+                                            current = current.children[0]
+                                        else:
+                                            break
+                                    if parts:
+                                        base_name = '.'.join(parts)
+                                        base_classes.append(base_name)
+                                        logger.debug(f"Found qualified base class: {base_name} for {class_name}")
+                    
+                    # Get all methods for this class
+                    methods = [
+                        func_name
+                        for func_name, func_data in ast_data["functions"].items()
+                        if func_data["class"] == class_name
+                    ]
+                    logger.debug(f"Methods found for {class_name}: {methods}")
+                    
                     ast_data["classes"][class_name] = {
                         "name": class_name,
                         "start_line": node.start_point[0],
                         "end_line": node.end_point[0],
-                        "methods": [
-                            func_name
-                            for func_name, func_data in ast_data["functions"].items()
-                            if func_data["class"] == class_name
-                        ],
+                        "base_classes": base_classes,
+                        "methods": methods,
                     }
 
             for child in node.children:
