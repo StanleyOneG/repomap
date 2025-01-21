@@ -115,29 +115,13 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
             parser.error(
                 "--print-function-by-name requires --name and --repo-tree-path"
             )
-    elif args.repo_tree:
-        try:
-            # Generate repository AST tree
-            logger.info(f"Generating repository AST tree for {args.repo_url}")
-            generator = RepoTreeGenerator(args.token)
-            repo_tree = generator.generate_repo_tree(args.repo_url, args.ref)
-
-            # Save repository AST tree
-            generator.save_repo_tree(repo_tree, args.output)
-            logger.info(f"Repository AST tree saved to {args.output}")
-            return 0
-        except ValueError as e:
-            logger.error(str(e))
-            return 1
-
     elif args.call_stack:
         if not all([args.target_file, args.line]):
             parser.error("--call-stack requires --target-file and --line")
-    else:
-        if not args.repo_url:
-            parser.error(
-                "repo_url is required when not using --call-stack or --print-function"
-            )
+    if not args.repo_url and not (args.call_stack or args.print_function or args.print_function_by_name):
+        parser.error(
+            "repo_url is required when not using --call-stack or --print-function"
+        )
 
     return args
 
@@ -155,7 +139,18 @@ def main() -> Optional[int]:  # noqa: C901
     setup_logging(log_level)
 
     try:
-        if args.print_function or args.print_function_by_name:
+        if args.repo_tree:
+            # Generate repository AST tree
+            logger.info(f"Generating repository AST tree for {args.repo_url}")
+            generator = RepoTreeGenerator(args.token)
+            repo_tree = generator.generate_repo_tree(args.repo_url, args.ref)
+
+            # Save repository AST tree
+            generator.save_repo_tree(repo_tree, args.output)
+            logger.info(f"Repository AST tree saved to {args.output}")
+            return 0
+
+        elif args.print_function or args.print_function_by_name:
             generator = CallStackGenerator(token=args.token)
             try:
                 if args.print_function:
