@@ -125,7 +125,9 @@ class RepoTreeGenerator:
                         f"at lines {node.start_point[0]}-{node.end_point[0]}"
                     )
                     
-                    functions[func_name] = {
+                    # Create a unique key for the function that includes class context
+                    func_key = f"{current_class}.{func_name}" if current_class else func_name
+                    functions[func_key] = {
                         "name": func_name,
                         "start_line": node.start_point[0],
                         "end_line": node.end_point[0],
@@ -173,44 +175,9 @@ class RepoTreeGenerator:
                         break
 
                 if body_node:
-                    # Process class body with updated current_class
                     # Process all nodes within the class body recursively
-                    def process_class_body(node: Node, class_name: str):
-                        """Process all nodes in class body to find methods."""
-                        # Log node type for debugging
-                        logger.debug(f"Processing node type {node.type} in class {class_name}")
-                        
-                        if node.type in ('function_definition', 'method_definition'):
-                            # This is a direct method definition
-                            self._find_functions(node, functions, class_name, lang)
-                        elif node.type == 'decorated_definition':
-                            # Handle decorated methods (including abstractmethod)
-                            is_abstract = False
-                            for child in node.children:
-                                if child.type == 'decorator':
-                                    for subchild in child.children:
-                                        if subchild.type == 'identifier':
-                                            decorator_name = subchild.text.decode('utf8')
-                                            if decorator_name == 'abstractmethod':
-                                                is_abstract = True
-                                                break
-                                elif child.type in ('function_definition', 'method_definition'):
-                                    # Process the method
-                                    self._find_functions(child, functions, class_name, lang)
-                                    if is_abstract:
-                                        # Log abstract method discovery
-                                        logger.debug(f"Found abstract method in class {class_name}")
-                        elif node.type == 'block':
-                            # Process all children in block
-                            for child in node.children:
-                                process_class_body(child, class_name)
-                        else:
-                            # Process all children recursively
-                            for child in node.children:
-                                process_class_body(child, class_name)
-                    
-                    # Start processing from the class body
-                    process_class_body(body_node, class_name)
+                    for child in body_node.children:
+                        self._find_functions(child, functions, class_name, lang)
 
         # Continue traversing if not in a class body
         if not current_class:
@@ -393,10 +360,10 @@ class RepoTreeGenerator:
                                         base_classes.append(base_name)
                                         logger.debug(f"Found qualified base class: {base_name} for {class_name}")
                     
-                    # Get all methods for this class
+                    # Get all methods for this class by filtering functions with this class
                     methods = [
-                        func_name
-                        for func_name, func_data in ast_data["functions"].items()
+                        func_data["name"]
+                        for func_key, func_data in ast_data["functions"].items()
                         if func_data["class"] == class_name
                     ]
                     logger.debug(f"Methods found for {class_name}: {methods}")

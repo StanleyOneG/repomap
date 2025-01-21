@@ -276,19 +276,19 @@ def test_generate_repo_tree_python(
     assert "_internal_save" in methods
 
     # Verify method calls
-    process_method = functions["process"]
+    process_method = functions["DataProcessor.process"]
     assert process_method["class"] == "DataProcessor"
     assert "validate_data" in process_method["calls"]
     assert "transform_data" in process_method["calls"]
     assert "save_result" in process_method["calls"]
     assert "outer_function" in process_method["calls"]
 
-    validate_data_method = functions["validate_data"]
+    validate_data_method = functions["DataProcessor.validate_data"]
     assert validate_data_method["class"] == "DataProcessor"
     assert "validate" in validate_data_method["calls"]
     assert "_internal_validate" in validate_data_method["calls"]
 
-    transform_data_method = functions["transform_data"]
+    transform_data_method = functions["DataProcessor.transform_data"]
     assert transform_data_method["class"] == "DataProcessor"
     assert "transform" in transform_data_method["calls"]
     assert "_internal_transform" in transform_data_method["calls"]
@@ -330,6 +330,60 @@ class SimpleClass:
     def method_two(self):
         self.method_one()
 """
+
+@pytest.fixture
+def mock_same_method_names_content():
+    """Mock Python file content with same method names in different classes."""
+    return """
+class BaseClass:
+    def validate_ref(self, repo_url: str):
+        pass
+
+class GitLabProvider(BaseClass):
+    def validate_ref(self, repo_url: str):
+        return "main"
+
+class GitHubProvider(BaseClass):
+    def validate_ref(self, repo_url: str):
+        return "master"
+"""
+
+def test_same_method_names_different_classes(repo_tree_generator, mock_same_method_names_content):
+    """Test that methods with same names in different classes are captured correctly."""
+    ast_data = repo_tree_generator._parse_file_ast(mock_same_method_names_content, 'python')
+    
+    # Verify all three validate_ref methods are captured
+    validate_ref_methods = [
+        (key, data) for key, data in ast_data["functions"].items() 
+        if data["name"] == "validate_ref"
+    ]
+    
+    assert len(validate_ref_methods) == 3, "Should find three validate_ref methods"
+    
+    # Verify each class has its validate_ref method
+    classes_with_validate_ref = {data["class"] for _, data in validate_ref_methods}
+    assert "BaseClass" in classes_with_validate_ref
+    assert "GitLabProvider" in classes_with_validate_ref
+    assert "GitHubProvider" in classes_with_validate_ref
+    
+    # Verify each method is stored with a unique key
+    validate_ref_keys = {key for key, _ in validate_ref_methods}
+    assert len(validate_ref_keys) == 3, "Each method should have a unique key"
+    
+    # Verify the methods are stored with their class names
+    assert "BaseClass.validate_ref" in ast_data["functions"]
+    assert "GitLabProvider.validate_ref" in ast_data["functions"]
+    assert "GitHubProvider.validate_ref" in ast_data["functions"]
+    
+    # Verify classes are captured correctly
+    assert "BaseClass" in ast_data["classes"]
+    assert "GitLabProvider" in ast_data["classes"]
+    assert "GitHubProvider" in ast_data["classes"]
+    
+    # Verify inheritance
+    assert ast_data["classes"]["GitLabProvider"]["base_classes"] == ["BaseClass"]
+    assert ast_data["classes"]["GitHubProvider"]["base_classes"] == ["BaseClass"]
+
 
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator, mock_nested_python_content):
@@ -386,22 +440,22 @@ def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator
     functions = ast_data["functions"]
     
     # Check ComplexClass method calls
-    outer_method = functions["outer_method"]
+    outer_method = functions["ComplexClass.outer_method"]
     assert outer_method["class"] == "ComplexClass"
     assert "inner_function" in outer_method["calls"]
     assert "helper_method" in outer_method["calls"]
 
-    helper_method = functions["helper_method"]
+    helper_method = functions["ComplexClass.helper_method"]
     assert helper_method["class"] == "ComplexClass"
     assert "process_data" in helper_method["calls"]
 
-    process_data = functions["process_data"]
+    process_data = functions["ComplexClass.process_data"]
     assert process_data["class"] == "ComplexClass"
     assert "validate" in process_data["calls"]
     assert "transform" in process_data["calls"]
 
     # Check SimpleClass method calls
-    method_two = functions["method_two"]
+    method_two = functions["SimpleClass.method_two"]
     assert method_two["class"] == "SimpleClass"
     assert "method_one" in method_two["calls"]
 
