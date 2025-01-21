@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional, Tuple
 from tree_sitter import Node
 
 from .callstack import CallStackGenerator
-from .config import settings
 from .providers import get_provider
 
 logger = logging.getLogger(__name__)
@@ -124,9 +123,11 @@ class RepoTreeGenerator:
                         f"Found function: {func_name} in class: {current_class} "
                         f"at lines {node.start_point[0]}-{node.end_point[0]}"
                     )
-                    
+
                     # Create a unique key for the function that includes class context
-                    func_key = f"{current_class}.{func_name}" if current_class else func_name
+                    func_key = (
+                        f"{current_class}.{func_name}" if current_class else func_name
+                    )
                     functions[func_key] = {
                         "name": func_name,
                         "start_line": node.start_point[0],
@@ -329,7 +330,7 @@ class RepoTreeGenerator:
                 if class_name:
                     # Log class discovery
                     logger.debug(f"Found class: {class_name}")
-                    
+
                     # Check for inheritance
                     base_classes = []
                     for child in node.children:
@@ -338,7 +339,9 @@ class RepoTreeGenerator:
                                 if arg.type == 'identifier':
                                     base_name = arg.text.decode('utf8')
                                     base_classes.append(base_name)
-                                    logger.debug(f"Found base class: {base_name} for {class_name}")
+                                    logger.debug(
+                                        f"Found base class: {base_name} for {class_name}"
+                                    )
                                 elif arg.type == 'attribute':
                                     # Handle module.class style base classes
                                     parts = []
@@ -350,7 +353,9 @@ class RepoTreeGenerator:
                                         elif current.type == 'attribute':
                                             for subchild in reversed(current.children):
                                                 if subchild.type == 'identifier':
-                                                    parts.insert(0, subchild.text.decode('utf8'))
+                                                    parts.insert(
+                                                        0, subchild.text.decode('utf8')
+                                                    )
                                                     break
                                             current = current.children[0]
                                         else:
@@ -358,8 +363,10 @@ class RepoTreeGenerator:
                                     if parts:
                                         base_name = '.'.join(parts)
                                         base_classes.append(base_name)
-                                        logger.debug(f"Found qualified base class: {base_name} for {class_name}")
-                    
+                                        logger.debug(
+                                            f"Found qualified base class: {base_name} for {class_name}"
+                                        )
+
                     # Get all methods for this class by filtering functions with this class
                     methods = [
                         func_data["name"]
@@ -367,7 +374,7 @@ class RepoTreeGenerator:
                         if func_data["class"] == class_name
                     ]
                     logger.debug(f"Methods found for {class_name}: {methods}")
-                    
+
                     ast_data["classes"][class_name] = {
                         "name": class_name,
                         "start_line": node.start_point[0],

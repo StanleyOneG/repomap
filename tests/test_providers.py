@@ -1,14 +1,11 @@
 """Tests for repository providers."""
 
-import pytest
-import gitlab
 from unittest.mock import MagicMock, patch
 
-from repomap.providers import (
-    GitHubProvider,
-    GitLabProvider,
-    get_provider,
-)
+import gitlab
+import pytest
+
+from repomap.providers import GitHubProvider, GitLabProvider, get_provider
 
 
 def test_get_provider_github():
@@ -34,12 +31,12 @@ def mock_github():
         file_mock.name = 'file1.py'
         file_mock.path = 'file1.py'
         file_mock.sha = 'abc123'
-        
+
         dir_mock = MagicMock()
         dir_mock.type = 'dir'
         dir_mock.name = 'dir1'
         dir_mock.path = 'dir1'
-        
+
         mock_repo.get_contents.return_value = [file_mock, dir_mock]
         mock_repo.get_branch.return_value = MagicMock()
         mock_repo.get_tag.return_value = MagicMock()
@@ -141,9 +138,15 @@ def test_gitlab_provider_validate_ref_branch(mock_gitlab):
 
 def test_gitlab_provider_validate_ref_invalid(mock_gitlab):
     """Test GitLab provider validate_ref with invalid ref."""
-    mock_gitlab.projects.get.return_value.branches.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
-    mock_gitlab.projects.get.return_value.tags.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
-    mock_gitlab.projects.get.return_value.commits.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
+    mock_gitlab.projects.get.return_value.branches.get.side_effect = (
+        gitlab.exceptions.GitlabGetError('', '', '')
+    )
+    mock_gitlab.projects.get.return_value.tags.get.side_effect = (
+        gitlab.exceptions.GitlabGetError('', '', '')
+    )
+    mock_gitlab.projects.get.return_value.commits.get.side_effect = (
+        gitlab.exceptions.GitlabGetError('', '', '')
+    )
 
     provider = GitLabProvider()
     with pytest.raises(ValueError, match="No ref found in repository by name"):

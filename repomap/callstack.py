@@ -9,11 +9,9 @@ warnings.filterwarnings('ignore', category=FutureWarning, module='tree_sitter')
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
-from urllib.parse import urlparse
 
 from tree_sitter_languages import get_language, get_parser
 
-from .config import settings
 from .providers import get_provider
 
 
@@ -310,14 +308,16 @@ class CallStackGenerator:
                 # Check if this function matches the name we're looking for
                 if func_info['name'] == function_name:
                     # Create file URL
-                    file_url = f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
+                    file_url = (
+                        f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
+                    )
                     lang = file_data['language']
-                    
+
                     # Get function content
                     content = self._get_function_content(
                         file_url, lang, start_line=func_info['start_line']
                     )
-                    
+
                     # Use class name as key, or 'global' for functions not in a class
                     class_name = func_info['class'] if func_info['class'] else 'global'
                     found_functions[class_name] = content

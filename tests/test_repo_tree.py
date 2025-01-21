@@ -301,35 +301,36 @@ def mock_nested_python_content():
 class ComplexClass:
     def __init__(self):
         self.data = None
-        
+
     def outer_method(self):
         def inner_function():
             print("inner")
-        
+
         inner_function()
         self.helper_method()
-    
+
     def helper_method(self):
         self.process_data()
-        
+
     def process_data(self):
         if self.data:
             self.validate()
             self.transform()
-    
+
     def validate(self):
         print("validating")
-        
+
     def transform(self):
         print("transforming")
 
 class SimpleClass:
     def method_one(self):
         print("one")
-        
+
     def method_two(self):
         self.method_one()
 """
+
 
 @pytest.fixture
 def mock_same_method_names_content():
@@ -348,45 +349,53 @@ class GitHubProvider(BaseClass):
         return "master"
 """
 
-def test_same_method_names_different_classes(repo_tree_generator, mock_same_method_names_content):
+
+def test_same_method_names_different_classes(
+    repo_tree_generator, mock_same_method_names_content
+):
     """Test that methods with same names in different classes are captured correctly."""
-    ast_data = repo_tree_generator._parse_file_ast(mock_same_method_names_content, 'python')
-    
+    ast_data = repo_tree_generator._parse_file_ast(
+        mock_same_method_names_content, 'python'
+    )
+
     # Verify all three validate_ref methods are captured
     validate_ref_methods = [
-        (key, data) for key, data in ast_data["functions"].items() 
+        (key, data)
+        for key, data in ast_data["functions"].items()
         if data["name"] == "validate_ref"
     ]
-    
+
     assert len(validate_ref_methods) == 3, "Should find three validate_ref methods"
-    
+
     # Verify each class has its validate_ref method
     classes_with_validate_ref = {data["class"] for _, data in validate_ref_methods}
     assert "BaseClass" in classes_with_validate_ref
     assert "GitLabProvider" in classes_with_validate_ref
     assert "GitHubProvider" in classes_with_validate_ref
-    
+
     # Verify each method is stored with a unique key
     validate_ref_keys = {key for key, _ in validate_ref_methods}
     assert len(validate_ref_keys) == 3, "Each method should have a unique key"
-    
+
     # Verify the methods are stored with their class names
     assert "BaseClass.validate_ref" in ast_data["functions"]
     assert "GitLabProvider.validate_ref" in ast_data["functions"]
     assert "GitHubProvider.validate_ref" in ast_data["functions"]
-    
+
     # Verify classes are captured correctly
     assert "BaseClass" in ast_data["classes"]
     assert "GitLabProvider" in ast_data["classes"]
     assert "GitHubProvider" in ast_data["classes"]
-    
+
     # Verify inheritance
     assert ast_data["classes"]["GitLabProvider"]["base_classes"] == ["BaseClass"]
     assert ast_data["classes"]["GitHubProvider"]["base_classes"] == ["BaseClass"]
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator, mock_nested_python_content):
+def test_generate_repo_tree_with_nested_methods(
+    mock_gitlab, repo_tree_generator, mock_nested_python_content
+):
     """Test repository AST tree generation with nested class methods."""
     # Setup mock project
     mock_project = Mock()
@@ -408,8 +417,14 @@ def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator
     mock_gitlab.return_value = mock_gitlab_instance
 
     # Mock file content fetching
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_nested_python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+    with patch.object(
+        repo_tree_generator,
+        '_get_file_content',
+        return_value=mock_nested_python_content,
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo"
+        )
 
     # Verify repository tree structure
     assert "src/complex.py" in repo_tree["files"]
@@ -417,7 +432,7 @@ def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator
     assert file_data["language"] == "python"
 
     ast_data = file_data["ast"]
-    
+
     # Verify ComplexClass methods
     assert "ComplexClass" in ast_data["classes"]
     complex_class = ast_data["classes"]["ComplexClass"]
@@ -438,7 +453,7 @@ def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator
 
     # Verify method calls
     functions = ast_data["functions"]
-    
+
     # Check ComplexClass method calls
     outer_method = functions["ComplexClass.outer_method"]
     assert outer_method["class"] == "ComplexClass"
@@ -458,6 +473,7 @@ def test_generate_repo_tree_with_nested_methods(mock_gitlab, repo_tree_generator
     method_two = functions["SimpleClass.method_two"]
     assert method_two["class"] == "SimpleClass"
     assert "method_one" in method_two["calls"]
+
 
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""

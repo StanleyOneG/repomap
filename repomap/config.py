@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings
 # Load environment variables
 load_dotenv()
 
+
 class Settings(BaseSettings):
     """Application settings."""
 

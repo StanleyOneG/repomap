@@ -118,7 +118,9 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
     elif args.call_stack:
         if not all([args.target_file, args.line]):
             parser.error("--call-stack requires --target-file and --line")
-    if not args.repo_url and not (args.call_stack or args.print_function or args.print_function_by_name):
+    if not args.repo_url and not (
+        args.call_stack or args.print_function or args.print_function_by_name
+    ):
         parser.error(
             "repo_url is required when not using --call-stack or --print-function"
         )
@@ -169,7 +171,7 @@ def main() -> Optional[int]:  # noqa: C901
                     function_contents = generator.get_function_content_by_name(
                         args.repo_tree_path, args.name
                     )
-                    
+
                     # Print each function implementation with its class context
                     for class_name, content in function_contents.items():
                         if class_name == 'global':

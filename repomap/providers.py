@@ -116,7 +116,7 @@ class GitLabProvider(RepoProvider):
                 return None
 
             base_url = f"{parsed.scheme}://{parsed.netloc}"
-            remaining_path = file_url[len(base_url):].strip('/')
+            remaining_path = file_url[len(base_url) :].strip('/')
 
             parts = remaining_path.split('/-/')
             if len(parts) != 2:
@@ -138,6 +138,7 @@ class GitLabProvider(RepoProvider):
                 project = gl.projects.get(project_path)
             except gitlab.exceptions.GitlabGetError:
                 from urllib.parse import quote
+
                 encoded_path = quote(project_path, safe='')
                 project = gl.projects.get(encoded_path)
 
@@ -165,6 +166,7 @@ class GitLabProvider(RepoProvider):
             project = self.gl.projects.get(project_path)
         except gitlab.exceptions.GitlabGetError:
             from urllib.parse import quote
+
             encoded_path = quote(project_path, safe='')
             project = self.gl.projects.get(encoded_path)
 
@@ -273,17 +275,17 @@ class GitHubProvider(RepoProvider):
         try:
             parsed = urlparse(file_url)
             path_parts = parsed.path.strip('/').split('/')
-            
+
             # Extract repo owner and name
             owner = path_parts[0]
             repo_name = path_parts[1]
-            
+
             # Extract ref and file path
             if 'blob' not in path_parts:
                 return None
             blob_index = path_parts.index('blob')
             ref = path_parts[blob_index + 1]
-            file_path = '/'.join(path_parts[blob_index + 2:])
+            file_path = '/'.join(path_parts[blob_index + 2 :])
 
             repo = self.gh.get_repo(f"{owner}/{repo_name}")
             content = repo.get_contents(file_path, ref=ref)
@@ -292,7 +294,9 @@ class GitHubProvider(RepoProvider):
             print(f"Failed to fetch GitHub content: {e}")
             return None
 
-    def fetch_repo_structure(self, repo_url: str, ref: Optional[str] = None) -> Dict:
+    def fetch_repo_structure(  # noqa: C901
+        self, repo_url: str, ref: Optional[str] = None
+    ) -> Dict:
         """Fetch repository structure from GitHub.
 
         Args:
@@ -309,16 +313,16 @@ class GitHubProvider(RepoProvider):
         def get_tree_recursive(path='', depth=0):
             if depth > 20:  # Add reasonable depth limit
                 return {}
-            
+
             try:
                 contents = repo.get_contents(path, ref=ref)
                 if not contents:  # Handle empty directories
                     return {}
-                
+
                 # Convert to list if single item
                 if not isinstance(contents, list):
                     contents = [contents]
-                
+
                 structure = {}
                 for content in contents:
                     name = str(content.name)  # Convert MagicMock to string if needed
@@ -351,20 +355,20 @@ class GitHubProvider(RepoProvider):
             ValueError: If provided ref does not exist
         """
         repo = self._get_repo_from_url(repo_url)
-        
+
         if ref:
             try:
                 repo.get_branch(ref)
                 return ref
-            except:
+            except Exception:
                 try:
                     repo.get_tag(ref)
                     return ref
-                except:
+                except Exception:
                     try:
                         repo.get_commit(ref)
                         return ref
-                    except:
+                    except Exception:
                         raise ValueError(f"No ref found in repository by name: {ref}")
         return repo.default_branch
 

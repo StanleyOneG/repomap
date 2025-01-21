@@ -1,13 +1,11 @@
 """Tests for call stack generation functionality."""
 
 import json
-from unittest import mock
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
 from repomap.callstack import CallStackGenerator
-from repomap.config import settings
 
 # Sample repository structure for testing
 SAMPLE_STRUCTURE = {
@@ -350,10 +348,10 @@ MOCK_REPO_TREE = {
                         "end_line": 22,
                         "class": "ClassB",
                         "calls": [],
-                    }
+                    },
                 }
             },
-        }
+        },
     },
 }
 
@@ -449,11 +447,12 @@ def test_get_function_content_by_name_global(mock_repo_tree_file, mock_generator
     assert "int interpret_filename(const char *filename)" in result["global"]
     assert "return err;" in result["global"]
 
-def test_get_function_content_by_name_class_methods(mock_repo_tree_file, mock_generator):
+
+def test_get_function_content_by_name_class_methods(
+    mock_repo_tree_file, mock_generator
+):
     """Test getting class method content by name."""
-    result = mock_generator.get_function_content_by_name(
-        mock_repo_tree_file, "process"
-    )
+    result = mock_generator.get_function_content_by_name(mock_repo_tree_file, "process")
     assert len(result) == 2
     assert "ClassA" in result
     assert "ClassB" in result
