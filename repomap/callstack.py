@@ -1,6 +1,11 @@
 """Module for generating call stacks using tree-sitter."""
 
 import json
+import warnings
+
+# Suppress the tree-sitter Language deprecation warning
+warnings.filterwarnings('ignore', category=FutureWarning, module='tree_sitter')
+
 import os
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
