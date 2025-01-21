@@ -306,20 +306,34 @@ class GitHubProvider(RepoProvider):
         if not ref:
             ref = repo.default_branch
 
-        def get_tree_recursive(path=''):
-            contents = repo.get_contents(path, ref=ref)
-            structure = {}
-
-            for content in contents:
-                if content.type == 'dir':
-                    structure[content.name] = get_tree_recursive(content.path)
-                else:
-                    structure[content.name] = {
-                        'type': 'blob',
-                        'mode': '100644',
-                        'id': content.sha,
-                    }
-            return structure
+        def get_tree_recursive(path='', depth=0):
+            if depth > 20:  # Add reasonable depth limit
+                return {}
+            
+            try:
+                contents = repo.get_contents(path, ref=ref)
+                if not contents:  # Handle empty directories
+                    return {}
+                
+                # Convert to list if single item
+                if not isinstance(contents, list):
+                    contents = [contents]
+                
+                structure = {}
+                for content in contents:
+                    name = str(content.name)  # Convert MagicMock to string if needed
+                    if content.type == 'dir':
+                        structure[name] = get_tree_recursive(content.path, depth + 1)
+                    else:
+                        structure[name] = {
+                            'type': 'blob',
+                            'mode': '100644',
+                            'id': content.sha,
+                        }
+                return structure
+            except Exception as e:
+                print(f"Error fetching contents for path {path}: {e}")
+                return {}
 
         return get_tree_recursive()
 

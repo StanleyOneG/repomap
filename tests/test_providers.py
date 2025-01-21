@@ -1,6 +1,7 @@
 """Tests for repository providers."""
 
 import pytest
+import gitlab
 from unittest.mock import MagicMock, patch
 
 from repomap.providers import (
@@ -28,19 +29,18 @@ def mock_github():
     with patch('repomap.providers.Github') as mock:
         mock_repo = MagicMock()
         mock_repo.default_branch = 'main'
-        mock_repo.get_contents.return_value = [
-            MagicMock(
-                type='file',
-                name='file1.py',
-                path='file1.py',
-                sha='abc123',
-            ),
-            MagicMock(
-                type='dir',
-                name='dir1',
-                path='dir1',
-            ),
-        ]
+        file_mock = MagicMock()
+        file_mock.type = 'file'
+        file_mock.name = 'file1.py'
+        file_mock.path = 'file1.py'
+        file_mock.sha = 'abc123'
+        
+        dir_mock = MagicMock()
+        dir_mock.type = 'dir'
+        dir_mock.name = 'dir1'
+        dir_mock.path = 'dir1'
+        
+        mock_repo.get_contents.return_value = [file_mock, dir_mock]
         mock_repo.get_branch.return_value = MagicMock()
         mock_repo.get_tag.return_value = MagicMock()
         mock_repo.get_commit.return_value = MagicMock()
@@ -141,9 +141,9 @@ def test_gitlab_provider_validate_ref_branch(mock_gitlab):
 
 def test_gitlab_provider_validate_ref_invalid(mock_gitlab):
     """Test GitLab provider validate_ref with invalid ref."""
-    mock_gitlab.projects.get.return_value.branches.get.side_effect = Exception()
-    mock_gitlab.projects.get.return_value.tags.get.side_effect = Exception()
-    mock_gitlab.projects.get.return_value.commits.get.side_effect = Exception()
+    mock_gitlab.projects.get.return_value.branches.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
+    mock_gitlab.projects.get.return_value.tags.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
+    mock_gitlab.projects.get.return_value.commits.get.side_effect = gitlab.exceptions.GitlabGetError('', '', '')
 
     provider = GitLabProvider()
     with pytest.raises(ValueError, match="No ref found in repository by name"):

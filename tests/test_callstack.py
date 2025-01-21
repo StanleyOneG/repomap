@@ -9,9 +9,6 @@ import pytest
 from repomap.callstack import CallStackGenerator
 from repomap.config import settings
 
-# Mock settings for tests
-settings.GITLAB_BASE_URL = "https://example.com"
-
 # Sample repository structure for testing
 SAMPLE_STRUCTURE = {
     "metadata": {"url": "https://example.com/repo", "version": "0.1.0"},
@@ -146,11 +143,9 @@ def test_get_file_content(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        # Test with a GitLab URL
-        url = "https://example.com/group/project/-/blob/main/src/file.py"
-        content = generator._get_file_content(url)
+    # Test with a GitLab URL
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
+    content = generator._get_file_content(url)
 
     assert content == SAMPLE_PYTHON_CONTENT
     mock_project.files.get.assert_called_once_with(file_path="src/file.py", ref="main")
@@ -169,10 +164,8 @@ def test_generate_call_stack(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        url = "https://example.com/group/project/-/blob/main/src/file.py"
-        call_stack = generator.generate_call_stack(url, 7)
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
+    call_stack = generator.generate_call_stack(url, 7)
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'main'
@@ -194,13 +187,11 @@ def test_generate_call_stack_c(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        url = "https://example.com/group/project/-/blob/main/src/file.c"
-        # Test line inside match function
-        call_stack = generator.generate_call_stack(
-            url, 57
-        )  # Line with the match function definition
+    url = "https://example.com/group/project/-/blob/main/src/file.c"
+    # Test line inside match function
+    call_stack = generator.generate_call_stack(
+        url, 57
+    )  # Line with the match function definition
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'match'
@@ -242,12 +233,10 @@ def test_generate_call_stack_minimal(mock_gitlab):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        # Create generator without structure file
-        generator = CallStackGenerator()
-        url = "https://example.com/group/project/-/blob/main/src/file.py"
-        call_stack = generator.generate_call_stack(url, 7)
+    # Create generator without structure file
+    generator = CallStackGenerator()
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
+    call_stack = generator.generate_call_stack(url, 7)
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'main'
@@ -276,13 +265,11 @@ def test_invalid_line_number(mock_gitlab, generator):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        # Line 4 is between functions, should raise ValueError
-        with pytest.raises(ValueError) as exc_info:
-            url = "https://example.com/group/project/-/blob/main/src/file.py"
-            generator.generate_call_stack(url, 4)
-        assert "No function found at line 4" in str(exc_info.value)
+    # Line 4 is between functions, should raise ValueError
+    with pytest.raises(ValueError) as exc_info:
+        url = "https://example.com/group/project/-/blob/main/src/file.py"
+        generator.generate_call_stack(url, 4)
+    assert "No function found at line 4" in str(exc_info.value)
 
 
 def test_load_structure(structure_file):
@@ -304,10 +291,8 @@ def test_get_function_content(mock_gitlab):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    # Mock settings to avoid base URL from config
-    with mock.patch("repomap.callstack.settings.GITLAB_BASE_URL", None):
-        generator = CallStackGenerator()  # No structure file needed for testing
-        url = "https://example.com/group/project/-/blob/main/src/file.py"
+    generator = CallStackGenerator()  # No structure file needed for testing
+    url = "https://example.com/group/project/-/blob/main/src/file.py"
 
         # Test getting main function content
     content = generator.get_function_content_by_line(url, 7)  # Line inside main()
