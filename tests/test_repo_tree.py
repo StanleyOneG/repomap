@@ -12,19 +12,17 @@ from repomap.repo_tree import RepoTreeGenerator
 @pytest.fixture
 def repo_tree_generator():
     """Create a RepoTreeGenerator instance for testing."""
-    with patch('repomap.repo_tree.settings') as mock_settings:
-        mock_settings.GITLAB_BASE_URL = "https://gitlab.example.com"
-        with patch('gitlab.Gitlab') as mock_gitlab:
-            # Create mock instance with projects attribute
-            mock_gl = Mock()
-            mock_project = Mock()
-            mock_project.default_branch = 'main'
-            mock_gl.projects.get.return_value = mock_project
-            mock_gitlab.return_value = mock_gl
+    with patch('gitlab.Gitlab') as mock_gitlab:
+        # Create mock instance with projects attribute
+        mock_gl = Mock()
+        mock_project = Mock()
+        mock_project.default_branch = 'main'
+        mock_gl.projects.get.return_value = mock_project
+        mock_gitlab.return_value = mock_gl
 
-            # Disable multiprocessing for testing to avoid pickling issues with mocks
-            generator = RepoTreeGenerator(use_multiprocessing=False)
-            return generator
+        # Disable multiprocessing for testing to avoid pickling issues with mocks
+        generator = RepoTreeGenerator(use_multiprocessing=False)
+        return generator
 
 
 @pytest.fixture
