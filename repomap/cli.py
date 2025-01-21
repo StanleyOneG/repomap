@@ -161,6 +161,8 @@ def main() -> Optional[int]:  # noqa: C901
                     function_content = generator.get_function_content_by_line(
                         args.target_file, args.line
                     )
+                    print(function_content)
+                    return 0
                 else:
                     # Print function content by name
                     logger.info(f"Getting function content for {args.name}")
@@ -180,7 +182,9 @@ def main() -> Optional[int]:  # noqa: C901
                             print(content)
                     return 0
             except ValueError as e:
-                logger.error(str(e))
+                error_msg = str(e)
+                logger.error(error_msg)
+                print(error_msg, file=sys.stderr)
                 return 1
 
         elif args.call_stack:
