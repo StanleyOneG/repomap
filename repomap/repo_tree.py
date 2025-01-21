@@ -15,7 +15,7 @@ from .providers import get_provider
 logger = logging.getLogger(__name__)
 
 # Set up debug logging
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 
 
 class RepoTreeGenerator:
