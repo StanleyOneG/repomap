@@ -294,7 +294,7 @@ def test_get_function_content(mock_gitlab):
     generator = CallStackGenerator()  # No structure file needed for testing
     url = "https://example.com/group/project/-/blob/main/src/file.py"
 
-        # Test getting main function content
+    # Test getting main function content
     content = generator.get_function_content_by_line(url, 7)  # Line inside main()
     assert "def main():" in content
     assert "x = helper()" in content
@@ -340,14 +340,14 @@ MOCK_REPO_TREE = {
                     "ClassA.process": {
                         "name": "process",
                         "start_line": 10,
-                        "end_line": 15,
+                        "end_line": 12,
                         "class": "ClassA",
                         "calls": [],
                     },
                     "ClassB.process": {
                         "name": "process",
-                        "start_line": 25,
-                        "end_line": 30,
+                        "start_line": 20,
+                        "end_line": 22,
                         "class": "ClassB",
                         "calls": [],
                     }
@@ -410,16 +410,29 @@ def mock_generator(monkeypatch):
     return err;
 }"""
         elif "src/classes.py" in file_url:
-            return """class ClassA:
+            return '''# Some comments and imports
+# to pad the line numbers
+
+class ClassA:
+    """Class A docstring."""
+
+    def __init__(self):
+        pass
+
     def process(self):
         print("Processing in ClassA")
         return "ClassA result"
 
 class ClassB:
+    """Class B docstring."""
+
+    def __init__(self):
+        pass
+
     def process(self):
         print("Processing in ClassB")
         return "ClassB result"
-"""
+'''
         return None
 
     monkeypatch.setattr(CallStackGenerator, "_get_file_content", mock_get_file_content)
