@@ -24,18 +24,24 @@ pip install repomap
 
 ## Usage as a Library
 
+> **Note:** Since the library uses multiprocessing internally, it's important to wrap your code in an `if __name__ == "__main__":` block when running scripts directly. This ensures proper behavior of multiprocessing on all platforms.
+
 ### Basic Usage
 
 ```python
 from repomap import RepoTreeGenerator, fetch_repo_structure
 
-# Generate repository AST tree
-generator = RepoTreeGenerator(token="your_token")
-tree = generator.generate_repo_tree("https://github.com/user/repo")
-generator.save_repo_tree(tree, "output.json")
+def main():
+    # Generate repository AST tree
+    generator = RepoTreeGenerator(token="your_token")
+    tree = generator.generate_repo_tree("https://github.com/user/repo")
+    generator.save_repo_tree(tree, "output.json")
 
-# Or use lower-level API to fetch repository structure
-structure = fetch_repo_structure("https://github.com/user/repo", token="your_token")
+    # Or use lower-level API to fetch repository structure
+    structure = fetch_repo_structure("https://github.com/user/repo", token="your_token")
+
+if __name__ == "__main__":
+    main()
 ```
 
 ### Example: Analyzing Function Calls
@@ -43,22 +49,26 @@ structure = fetch_repo_structure("https://github.com/user/repo", token="your_tok
 ```python
 from repomap import RepoTreeGenerator
 
-# Initialize generator
-generator = RepoTreeGenerator(token="your_token")
+def analyze_functions():
+    # Initialize generator
+    repo_tree_generator = RepoTreeGenerator(token="your_token")
 
-# Generate AST tree
-tree = generator.generate_repo_tree("https://github.com/user/repo")
+    # Generate AST tree
+    tree = generator.generate_repo_tree("https://github.com/user/repo")
 
-# Access function information
-for file_path, file_data in tree["files"].items():
-    if file_data["language"] == "python":  # or any other supported language
-        ast_data = file_data["ast"]
-        
-        # Get all functions and their calls
-        for func_name, func_info in ast_data["functions"].items():
-            print(f"Function: {func_name}")
-            print(f"Calls: {func_info['calls']}")
-            print(f"Lines: {func_info['start_line']}-{func_info['end_line']}")
+    # Access function information
+    for file_path, file_data in tree["files"].items():
+        if file_data["language"] == "python":  # or any other supported language
+            ast_data = file_data["ast"]
+            
+            # Get all functions and their calls
+            for func_name, func_info in ast_data["functions"].items():
+                print(f"Function: {func_name}")
+                print(f"Calls: {func_info['calls']}")
+                print(f"Lines: {func_info['start_line']}-{func_info['end_line']}")
+
+if __name__ == "__main__":
+    analyze_functions()
 ```
 
 ### Example: Working with Function Content and Call Stacks
@@ -67,7 +77,7 @@ for file_path, file_data in tree["files"].items():
 from repomap import CallStackGenerator
 
 # Initialize generator
-generator = CallStackGenerator(token="your_token")
+call_stack_generator = CallStackGenerator(token="your_token")
 
 # Get function content by line number
 content = generator.get_function_content_by_line(
@@ -168,3 +178,7 @@ poetry run pytest
 3. Make your changes
 4. Run tests
 5. Submit a pull request
+
+
+### TODO:
+1. Add Pydantic models output for functions
