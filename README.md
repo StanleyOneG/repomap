@@ -182,3 +182,4 @@ poetry run pytest
 
 ### TODO:
 1. Add Pydantic models output for functions
+2. Refactor
