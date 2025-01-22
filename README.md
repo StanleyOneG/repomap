@@ -24,7 +24,12 @@ pip install repomap
 
 ## Usage as a Library
 
-> **Note:** Since the library uses multiprocessing internally, it's important to wrap your code in an `if __name__ == "__main__":` block when running scripts directly. This ensures proper behavior of multiprocessing on all platforms.
+> **Note:** Since the library uses multiprocessing internally for building repository ast tree, it's important to wrap your code in an `if __name__ == "__main__":` block when running scripts with `RepoTreeGenerator` directly. This ensures proper behavior of multiprocessing on all platforms.
+
+You can disable multiprocessing by using:
+```python
+RepoTreeGenerator(use_multiprocessing=False) # default: True
+```
 
 ### Basic Usage
 
@@ -80,13 +85,13 @@ from repomap import CallStackGenerator
 call_stack_generator = CallStackGenerator(token="your_token")
 
 # Get function content by line number
-content = generator.get_function_content_by_line(
+content = call_stack_generator.get_function_content_by_line(
     "https://github.com/user/repo/file.py",
     line_number=42
 )
 
 # Get function content by name (returns dict mapping class names to implementations)
-contents = generator.get_function_content_by_name(
+contents = call_stack_generator.get_function_content_by_name(
     "repo_tree.json",  # Path to previously generated repo tree
     "my_function"
 )
@@ -95,7 +100,7 @@ for class_name, implementation in contents.items():
     print(implementation)
 
 # Generate call stack for a specific line
-call_stack = generator.generate_call_stack(
+call_stack = call_stack_generator.generate_call_stack(
     "https://github.com/user/repo/file.py",
     line_number=42
 )
