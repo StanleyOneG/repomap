@@ -271,8 +271,11 @@ class CallStackGenerator:
         """
         if isinstance(ast_tree, str):
             # Load repo tree
-            with open(ast_tree) as f:
-                repo_tree = json.load(f)
+            try:
+                with open(ast_tree) as f:
+                    repo_tree = json.load(f)
+            except FileNotFoundError:
+                raise ValueError(f"Repository tree file not found: {ast_tree}")
         elif isinstance(ast_tree, dict):
             repo_tree = ast_tree
         else:
