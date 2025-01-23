@@ -30,36 +30,19 @@ class CallStackGenerator:
     }
 
     def __init__(
-        self, structure_file: Optional[str] = None, token: Optional[str] = None
+        self,
+        token: Optional[str] = None,
     ):
         """Initialize the call stack generator.
 
         Args:
-            structure_file: Optional path to the JSON file containing repository structure
             token: Optional GitLab access token for authentication
         """
-        self.repo_structure = (
-            self._load_structure(structure_file) if structure_file else {}
-        )
         self.parsers = {}
         self.queries = {}
         self.token = token
         self.provider = None  # Will be initialized when needed based on repo URL
         self._init_parsers()
-
-    def _load_structure(self, structure_file: Optional[str]) -> dict:
-        """Load repository structure from JSON file.
-
-        Args:
-            structure_file: Optional path to the JSON file
-
-        Returns:
-            dict: Repository structure
-        """
-        if not structure_file:
-            return {}
-        with open(structure_file) as f:
-            return json.load(f)
 
     def _init_parsers(self):
         """Initialize tree-sitter parsers and queries for supported languages."""
@@ -267,14 +250,16 @@ class CallStackGenerator:
         return self._get_function_content(file_url, lang, line_number=line_number)
 
     def get_function_content_by_name(
-        self, repo_tree_path: str, function_name: str
+        self,
+        ast_tree: str | dict,
+        function_name: str,
     ) -> Dict[str, str]:
         """Get the content of a function by its name using the repository tree.
         If multiple functions with the same name exist in different classes,
         returns content for all of them.
 
         Args:
-            repo_tree_path: Path to the repository tree JSON file
+            ast_tree: Path to the repository tree JSON file, Dictionary with repository tree itself
             function_name: Name of the function to find (without class prefix)
 
         Returns:
@@ -284,9 +269,14 @@ class CallStackGenerator:
         Raises:
             ValueError: If no function is found with the given name
         """
-        # Load repo tree
-        with open(repo_tree_path) as f:
-            repo_tree = json.load(f)
+        if isinstance(ast_tree, str):
+            # Load repo tree
+            with open(ast_tree) as f:
+                repo_tree = json.load(f)
+        elif isinstance(ast_tree, dict):
+            repo_tree = ast_tree
+        else:
+            raise ValueError("Invalid ast_tree type")
 
         # Get repository URL from metadata
         if 'metadata' not in repo_tree or 'url' not in repo_tree['metadata']:

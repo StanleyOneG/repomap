@@ -270,12 +270,6 @@ def test_invalid_line_number(mock_gitlab, generator):
     assert "No function found at line 4" in str(exc_info.value)
 
 
-def test_load_structure(structure_file):
-    """Test loading repository structure."""
-    generator = CallStackGenerator(structure_file)
-    assert generator.repo_structure == SAMPLE_STRUCTURE
-
-
 @patch('gitlab.Gitlab')
 def test_get_function_content(mock_gitlab):
     """Test getting function content."""
