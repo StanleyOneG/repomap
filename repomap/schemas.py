@@ -1,9 +1,9 @@
 import logging
 from typing import Dict, List, Optional
 from typing_extensions import Annotated
-from pydantic import BaseModel, Field, field_validator, PositiveInt, StringConstraints
+from pydantic import BaseModel, Field, field_validator, PositiveInt, StringConstraints, computed_field
 
-logger = logging.getLogger(__name__)
+
 
 class MetadataModel(BaseModel):
     """Metadata about the repository."""
@@ -23,19 +23,27 @@ class FunctionDetailsModel(BaseModel):
     name: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the function")
     start_line: PositiveInt = Field(..., description="Start line of the function definition")
     end_line: PositiveInt = Field(..., description="End line of the function definition")
-    class_name: Optional[str] = Field(default=None, alias='class', description="Name of the class if the function is a method, otherwise None")
+    class_name: Optional[str] = Field(default=None, validation_alias="class", description="Name of the class if the function is a method, otherwise None")
     calls: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of function calls within this function")
-    is_method: bool = Field(default=False, description="Indicates if the function is a method of a class")
+    # is_method: bool = Field(default=False, description="Indicates if the function is a method of a class") # No default=False, and Optional[bool]
     called_by: List[FunctionCallSiteModel] = Field(default_factory=list, description="List of locations where this function is called in the repository")
 
-    @field_validator("is_method", mode="before")
-    @classmethod
-    def set_is_method(cls, v: bool, values):
+
+    @computed_field
+    @property
+    def is_method(self) -> bool:
         """Automatically set is_method based on class_name."""
-        class_name = values.get("class_name")
-        if class_name is not None:
-            return True
-        return False
+        class_name = self.class_name
+        return class_name is not None
+    
+    
+    # @field_validator("is_method", mode="before")
+    # @classmethod
+    # def set_is_method(cls, v: bool, values):
+    #     """Automatically set is_method based on class_name."""
+    #     class_name = values.data.get("class_name")
+    #     return class_name is not None
+
 
     @field_validator("start_line")
     @classmethod
@@ -49,7 +57,7 @@ class FunctionDetailsModel(BaseModel):
     @classmethod
     def validate_end_line_after_start(cls, end_line: int, values):
         """Ensure end_line is not before start_line."""
-        start_line = values.get("start_line")
+        start_line = values.data.get("start_line")
         if start_line is not None and end_line < start_line:
             raise ValueError("end_line must be greater than or equal to start_line")
         return end_line
@@ -80,7 +88,7 @@ class ClassDetailsModel(BaseModel):
     @classmethod
     def validate_end_line_after_start(cls, end_line: int, values):
         """Ensure end_line is not before start_line."""
-        start_line = values.get("start_line")
+        start_line = values.data.get("start_line")
         if start_line is not None and end_line < start_line:
             raise ValueError("end_line must be greater than or equal to start_line")
         return end_line
@@ -119,20 +127,19 @@ class RepoStructureModel(BaseModel):
     """Root model representing the entire repository AST structure."""
     metadata: MetadataModel = Field(..., description="Metadata about the repository")
     files: Dict[str, FileASTModel] = Field(..., description="Dictionary of files with their AST representations, keys are file paths")
-    _called_by_population_failed: bool = Field(default=False, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
+    called_by_population_failed: bool = Field(default=False, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
 
     def model_post_init(self, __context__):
         """Populate cross-reference 'called_by' fields after model initialization with error handling."""
         try:
             populate_function_callers(self)
         except Exception as e:
-            logger.error(f"Error populating 'called_by' information: {e}", exc_info=True)
-            self._called_by_population_failed = True
+            self.called_by_population_failed = True
 
     @property
     def is_called_by_population_failed(self) -> bool:
         """Read-only property to check if 'called_by' population failed."""
-        return self._called_by_population_failed
+        return self.called_by_population_failed
 
 
 def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
