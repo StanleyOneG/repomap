@@ -3,6 +3,8 @@ from typing import Dict, List, Optional
 from typing_extensions import Annotated
 from pydantic import BaseModel, Field, field_validator, PositiveInt, StringConstraints, computed_field
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
 class MetadataModel(BaseModel):
@@ -127,55 +129,94 @@ class RepoStructureModel(BaseModel):
     """Root model representing the entire repository AST structure."""
     metadata: MetadataModel = Field(..., description="Metadata about the repository")
     files: Dict[str, FileASTModel] = Field(..., description="Dictionary of files with their AST representations, keys are file paths")
-    called_by_population_failed: bool = Field(default=False, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
+    # called_by_population_failed: bool = Field(default=False, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
 
-    def model_post_init(self, __context__):
-        """Populate cross-reference 'called_by' fields after model initialization with error handling."""
-        try:
-            populate_function_callers(self)
-        except Exception as e:
-            self.called_by_population_failed = True
+    # def model_post_init(self, __context__):
+    #     """Populate cross-reference 'called_by' fields after model initialization with error handling."""
+    #     try:
+    #         populate_function_callers(self)
+    #     except Exception as e:
+    #         self.called_by_population_failed = True
 
-    @property
-    def is_called_by_population_failed(self) -> bool:
-        """Read-only property to check if 'called_by' population failed."""
-        return self.called_by_population_failed
+    # @property
+    # def is_called_by_population_failed(self) -> bool:
+    #     """Read-only property to check if 'called_by' population failed."""
+    #     return self.called_by_population_failed
 
+
+# def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
+#     """
+#     Populates the 'called_by' field in FunctionDetailsModel for each function
+#     by finding all call sites in the repository.
+#     Enhanced matching based on function name and class context.
+#     """
+#     function_map: Dict[tuple[str, Optional[str]], FunctionDetailsModel] = {} # Key is tuple (function_name, class_name)
+
+#     # Create a map of all functions in the repository for efficient lookup by (name, class_name) tuple
+#     for file_path, file_ast_model in repo_structure.files.items():
+#         for function_name, function_detail in file_ast_model.ast.functions.items():
+#             function_map[(function_detail.name, function_detail.class_name)] = function_detail
+
+#     # Iterate through all files and calls to find call sites
+#     for file_path, file_ast_model in repo_structure.files.items():
+#         for call_detail in file_ast_model.ast.calls:
+#             called_function_name = call_detail.name
+#             caller_function_name = call_detail.caller
+#             caller_class_name = call_detail.class_name
+
+#             # Try to match based on function name and class context:
+#             called_function_details = function_map.get((called_function_name, None)) # Try to find global function first
+#             if caller_class_name: # If the call is made from within a class method, prioritize class methods
+#                 called_function_details_method = function_map.get((called_function_name, caller_class_name))
+#                 if called_function_details_method:
+#                     called_function_details = called_function_details_method # Use class method if found
+
+#             if called_function_details: # If we found a match (either global or class method)
+#                 call_site = FunctionCallSiteModel(
+#                     file_path=file_path,
+#                     line_number=call_detail.line,
+#                     caller_function_name=caller_function_name,
+#                     caller_class_name=caller_class_name
+#                 )
+#                 called_function_details.called_by.append(call_site)
+                
+#     # logger.info(f"function map:\n\n{function_map}\n\n")
+
+#     return repo_structure
 
 def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
     """
     Populates the 'called_by' field in FunctionDetailsModel for each function
     by finding all call sites in the repository.
-    Enhanced matching based on function name and class context.
     """
-    function_map: Dict[tuple[str, Optional[str]], FunctionDetailsModel] = {} # Key is tuple (function_name, class_name)
+    function_map: Dict[str, FunctionDetailsModel] = {}
 
-    # Create a map of all functions in the repository for efficient lookup by (name, class_name) tuple
+    # 1. Create a map of all functions in the repository for easy lookup by full_name
     for file_path, file_ast_model in repo_structure.files.items():
         for function_name, function_detail in file_ast_model.ast.functions.items():
-            function_map[(function_detail.name, function_detail.class_name)] = function_detail
+            function_map[function_detail.full_name] = function_detail
 
-    # Iterate through all files and calls to find call sites
+    # 2. Iterate through all files and calls to find call sites
     for file_path, file_ast_model in repo_structure.files.items():
         for call_detail in file_ast_model.ast.calls:
-            called_function_name = call_detail.name
-            caller_function_name = call_detail.caller
+            called_function_name = call_detail.name  # Name of the function being called
+            caller_function_name = call_detail.caller # Name of the function making the call
             caller_class_name = call_detail.class_name
 
-            # Try to match based on function name and class context:
-            called_function_details = function_map.get((called_function_name, None)) # Try to find global function first
-            if caller_class_name: # If the call is made from within a class method, prioritize class methods
-                called_function_details_method = function_map.get((called_function_name, caller_class_name))
-                if called_function_details_method:
-                    called_function_details = called_function_details_method # Use class method if found
+            # Construct the full name of the caller to be more precise
+            caller_full_name = f"{caller_class_name}.{caller_function_name}" if caller_class_name else caller_function_name
 
-            if called_function_details: # If we found a match (either global or class method)
+            # Check if the called function exists in our function_map (defined in the repository)
+            if called_function_name in function_map: # Matching by simple name might be too broad. Refine matching if needed.
+
                 call_site = FunctionCallSiteModel(
                     file_path=file_path,
                     line_number=call_detail.line,
                     caller_function_name=caller_function_name,
                     caller_class_name=caller_class_name
                 )
-                called_function_details.called_by.append(call_site)
+                # Get the FunctionDetailsModel of the function being called and append the call site
+                function_map[called_function_name].called_by.append(call_site)
+    logger.info(f"function map:\n\n{function_map}\n\n")
 
-    return repo_structure
+    return repo_structure # Return the modified repo_structure with populated called_by fields
