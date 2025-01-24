@@ -192,7 +192,7 @@ def main() -> Optional[int]:  # noqa: C901
         elif args.call_stack:
             # Generate call stack
             logger.info(f"Generating call stack for {args.target_file}:{args.line}")
-            generator = CallStackGenerator(args.structure_file, args.token)
+            generator = CallStackGenerator(args.token)
             call_stack = generator.generate_call_stack(args.target_file, args.line)
 
             if args.output_stack:

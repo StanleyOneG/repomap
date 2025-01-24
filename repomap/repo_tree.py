@@ -247,9 +247,6 @@ class RepoTreeGenerator:
                     name = get_call_name(func_node)
                     if name:
                         calls.append(name)
-                        # For method calls, also add the base name
-                        if '.' in name:
-                            calls.append(name.split('.')[-1])
 
             # Visit all children
             for child in node.children:
@@ -388,6 +385,16 @@ class RepoTreeGenerator:
 
         find_classes(tree.root_node)
 
+        # Process __init__ methods to find instance variables
+        for class_name, class_data in ast_data["classes"].items():
+            if '__init__' in class_data["methods"]:
+                func_key = f"{class_name}.__init__"
+                if func_key in ast_data["functions"]:
+                    # Re-parse the function body to find instance variables
+                    init_content = content.split('\n')[ast_data["functions"][func_key]["start_line"]:ast_data["functions"][func_key]["end_line"]+1]
+                    init_node = parser.parse(bytes('\n'.join(init_content), 'utf8')).root_node
+                    class_data["instance_vars"] = self._find_instance_vars(init_node, lang)
+
         # Extract all calls for easier querying
         for func_name, func_data in ast_data["functions"].items():
             for call in func_data["calls"]:
@@ -399,6 +406,25 @@ class RepoTreeGenerator:
                         "class": func_data["class"],
                     }
                 )
+
+        # Resolve method calls using instance variables
+        for func_key, func_data in ast_data["functions"].items():
+            if func_data["class"]:
+                class_name = func_data["class"]
+                if class_name in ast_data["classes"]:
+                    instance_vars = ast_data["classes"][class_name].get("instance_vars", {})
+                    resolved_calls = []
+                    for call in func_data["calls"]:
+                        parts = call.split('.')
+                        if len(parts) >= 2 and parts[0] == 'self' and parts[1] in instance_vars:
+                            # Replace self.attr with the class name
+                            new_parts = [instance_vars[parts[1]]] + parts[2:]
+                            resolved_call = '.'.join(new_parts)
+                            resolved_calls.append(resolved_call)
+                        else:
+                            resolved_calls.append(call)
+                    # Update the calls list, removing duplicates
+                    func_data["calls"] = list(set(resolved_calls))
 
         # Extract imports
         def find_imports(node: Node):
@@ -419,6 +445,41 @@ class RepoTreeGenerator:
         find_imports(tree.root_node)
 
         return ast_data
+
+    def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
+        """Find instance variables initialized with class instances in __init__ method."""
+        instance_vars = {}
+        def visit(n: Node):
+            if lang == 'python' and n.type == 'assignment':
+                target = None
+                value = None
+                # Extract target and value from assignment
+                for child in n.children:
+                    if child.type == 'attribute':
+                        target = child
+                    elif child.type == 'call':
+                        value = child
+                    elif child.type == '=' and len(n.children) >= 3:
+                        target = n.children[0]
+                        value = n.children[2]
+                if target and value and target.type == 'attribute' and value.type == 'call':
+                    # Check if target is self.attribute
+                    obj = target.children[0]
+                    if obj.type == 'identifier' and obj.text.decode('utf8') == 'self':
+                        attr = target.children[1].text.decode('utf8')
+                        # Check if value is a class constructor call
+                        func = value.children[0]
+                        if func.type == 'identifier':
+                            class_name = func.text.decode('utf8')
+                            instance_vars[attr] = class_name
+                        elif func.type == 'attribute':
+                            # Handle cases like module.ClassName()
+                            class_name = func.children[-1].text.decode('utf8')
+                            instance_vars[attr] = class_name
+            for child in n.children:
+                visit(child)
+        visit(node)
+        return instance_vars
 
     @staticmethod
     def _process_file_worker(
