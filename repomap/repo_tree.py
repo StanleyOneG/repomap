@@ -158,14 +158,26 @@ class RepoTreeGenerator:
         
         for n, tag in captures:
             if tag == 'name.reference.call':
-                # Get full call chain
+                # Get full call chain by traversing attribute nodes
                 call_parts = []
-                current = n
-                while current.parent and current.parent.type in ('attribute', 'call'):
-                    if current.type == 'identifier':
-                        call_parts.insert(0, current.text.decode('utf8'))
-                    current = current.parent
+                current_node = n
                 
+                while True:
+                    if current_node.type == 'identifier':
+                        call_parts.insert(0, current_node.text.decode('utf8'))
+                        break
+                    elif current_node.type == 'attribute':
+                        # Get the rightmost part of the attribute
+                        attr_part = current_node.children[1].text.decode('utf8')
+                        call_parts.insert(0, attr_part)
+                        # Move to the left side of the attribute
+                        current_node = current_node.children[0]
+                    elif current_node.type == 'call':
+                        # For calls, move to the function part
+                        current_node = current_node.children[0]
+                    else:
+                        break
+
                 # Resolve instance variables using class information
                 if current_class and call_parts:
                     class_info = self._current_classes.get(current_class, {})
@@ -190,7 +202,8 @@ class RepoTreeGenerator:
                             resolved.append(part)
                     call_parts = resolved
 
-                calls.append('.'.join(call_parts))
+                if call_parts:
+                    calls.append('.'.join(call_parts))
 
         return list(set(calls))
 
@@ -199,43 +212,42 @@ class RepoTreeGenerator:
         stack = [node]
 
         def process_assignment(assignment_node: Node):
-            if (
-                len(assignment_node.children) >= 3
-                and assignment_node.children[1].type == '='
-            ):
-                target = assignment_node.children[0]
-                value = assignment_node.children[2]
+            if assignment_node.type == 'assignment':
+                if len(assignment_node.children) >= 3 and assignment_node.children[1].type == '=':
+                    target = assignment_node.children[0]
+                    value = assignment_node.children[2]
 
-                if target.type == 'attribute' and target.children[0].type == 'identifier' and target.children[0].text.decode() == 'self':
-                    attr = target.children[1].text.decode()
-                    
-                    # Detect direct class instantiation (e.g. self.var = ClassName())
-                    if value.type == 'call' and value.children[0].type == 'identifier':
-                        # This is a constructor call
-                        class_name = value.children[0].text.decode()
-                        instance_vars[attr] = class_name
-                    # Handle cases where assignment comes from a method call (e.g. get_instance())
-                    elif value.type == 'call' and value.children[0].type == 'attribute':
-                        # Try to resolve the full chain (e.g. module.ClassName())
-                        parts = []
-                        current = value.children[0]
-                        while current.type == 'attribute':
-                            parts.insert(0, current.children[-1].text.decode())
-                            current = current.children[0]
-                        if current.type == 'identifier':
-                            parts.insert(0, current.text.decode())
-                            instance_vars[attr] = '.'.join(parts)
+                    if target.type == 'attribute' and target.children[0].type == 'identifier' and target.children[0].text.decode() == 'self':
+                        attr = target.children[1].text.decode()
+                        class_name = None
+
+                        # Handle value types
+                        if value.type == 'call':
+                            # Direct constructor call (e.g. ClassName())
+                            current = value.children[0]
+                            parts = []
+                            while current.type in ['attribute', 'identifier']:
+                                if current.type == 'attribute':
+                                    parts.insert(0, current.children[1].text.decode())
+                                    current = current.children[0]
+                                else:
+                                    parts.insert(0, current.text.decode())
+                                    break
+                            class_name = '.'.join(parts)
+                        elif value.type == 'identifier':
+                            # Direct class reference
+                            class_name = value.text.decode()
+
+                        if class_name:
+                            instance_vars[attr] = class_name
 
         while stack:
             current_node = stack.pop()
-
-            if current_node.type == 'expression_statement':
-                for child in current_node.children:
-                    if child.type == 'assignment':
-                        process_assignment(child)
-            elif current_node.type == 'assignment':
+            
+            if current_node.type in ['expression_statement', 'assignment']:
                 process_assignment(current_node)
-
+            
+            # Add children to stack in reverse order for DFS
             for child in reversed(current_node.children):
                 stack.append(child)
 
