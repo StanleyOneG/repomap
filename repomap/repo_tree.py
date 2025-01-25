@@ -13,9 +13,6 @@ from .providers import get_provider
 
 logger = logging.getLogger(__name__)
 
-# Set up debug logging
-# logging.basicConfig(level=logging.DEBUG)
-
 
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
@@ -32,7 +29,8 @@ class RepoTreeGenerator:
         self.call_stack_gen = CallStackGenerator(token=self.token)
         self.parsers = self.call_stack_gen.parsers
         self.queries = self.call_stack_gen.queries
-        self.provider = None  # Will be initialized when needed based on repo URL
+        self.provider = None
+        self._current_classes = {}
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -56,7 +54,7 @@ class RepoTreeGenerator:
         """
         return self.call_stack_gen._detect_language(file_path)
 
-    def _find_functions(  # noqa: C901
+    def _find_functions(
         self,
         node: Node,
         functions: Dict[str, Any],
@@ -71,24 +69,17 @@ class RepoTreeGenerator:
             current_class: Name of the current class if inside one
             lang: Programming language being parsed
         """
-        # Process function definitions
-        if node.type in ('function_definition', 'method_definition') or (
-            lang in ('c', 'cpp') and node.type == 'declaration'
-        ):
-            name_node = None
+        stack = [(node, current_class)]
+        while stack:
+            current_node, current_class = stack.pop()
 
-            if lang in ('c', 'cpp') and node.type == 'declaration':
-                # Handle C/C++ function declarations
-                for child in node.children:
-                    if child.type == 'function_declarator':
-                        for subchild in child.children:
-                            if subchild.type == 'identifier':
-                                name_node = subchild
-                                break
-                        break
-            else:
-                # Handle Python-style function definitions
-                for child in node.children:
+            # Process function/method definitions
+            if current_node.type in ('function_definition', 'method_definition'):
+                name_node = None
+                body_node = None
+
+                # Find function name and body
+                for child in current_node.children:
                     if child.type == 'identifier':
                         name_node = child
                         break
@@ -98,101 +89,65 @@ class RepoTreeGenerator:
                                 name_node = subchild
                                 break
 
-            if name_node:
-                func_name = name_node.text.decode('utf8')
-                # Find the function body
-                body_node = None
-                for child in node.children:
-                    if child.type in ('block', 'compound_statement'):
-                        body_node = child
-                        break
-
-                if body_node or lang in (
-                    'c',
-                    'cpp',
-                ):  # C/C++ might have declarations without bodies
-                    # Process the function body for calls if it exists
-                    calls = []
-                    if body_node:
-                        calls = self._find_function_calls(body_node, lang)
-                        # Also process the function node itself for decorators and defaults
-                        calls.extend(self._find_function_calls(node, lang))
-
-                    # Log function discovery
-                    logger.debug(
-                        f"Found function: {func_name} in class: {current_class} "
-                        f"at lines {node.start_point[0]}-{node.end_point[0]}"
+                if name_node:
+                    func_name = name_node.text.decode('utf8')
+                    body_node = next(
+                        (c for c in current_node.children if c.type == 'block'), None
                     )
 
-                    # Create a unique key for the function that includes class context
+                    calls = (
+                        self._find_function_calls(current_node, lang)
+                        if body_node
+                        else []
+                    )
+
                     func_key = (
                         f"{current_class}.{func_name}" if current_class else func_name
                     )
                     functions[func_key] = {
                         "name": func_name,
-                        "start_line": node.start_point[0],
-                        "end_line": node.end_point[0],
+                        "start_line": current_node.start_point[0],
+                        "end_line": current_node.end_point[0],
                         "class": current_class,
-                        "calls": list(set(calls)),  # Remove duplicates
+                        "calls": list(set(calls)),
                     }
 
-        # Process class/struct definitions
-        elif node.type == 'class_definition' or (
-            lang in ('c', 'cpp')
-            and node.type in ('struct_specifier', 'type_definition')
-        ):
-            class_name = None
+                    # Process __init__ for instance variables
+                    if current_class and func_name == "__init__" and body_node:
+                        instance_vars = self._find_instance_vars(body_node, lang)
+                        self._current_classes.setdefault(
+                            current_class, {"instance_vars": {}}
+                        )
+                        self._current_classes[current_class]["instance_vars"].update(
+                            instance_vars
+                        )
 
-            if lang in ('c', 'cpp') and node.type == 'type_definition':
-                # Handle typedef struct cases
-                for child in node.children:
-                    if child.type == 'type_identifier':
-                        class_name = child.text.decode('utf8')
-                        break
-                    elif child.type == 'struct_specifier':
-                        for subchild in child.children:
-                            if subchild.type == 'type_identifier':
-                                class_name = subchild.text.decode('utf8')
-                                break
-            elif lang in ('c', 'cpp') and node.type == 'struct_specifier':
-                # Handle direct struct definitions
-                for child in node.children:
-                    if child.type == 'type_identifier':
-                        class_name = child.text.decode('utf8')
-                        break
-            else:
-                # Handle Python-style class definitions
-                for child in node.children:
+            # Process class definitions
+            elif current_node.type == 'class_definition':
+                class_name = None
+                body_node = None
+
+                # Find class name and body
+                for child in current_node.children:
                     if child.type == 'identifier':
                         class_name = child.text.decode('utf8')
-                        break
-
-            if class_name:
-                # Find the class/struct body
-                body_node = None
-                for child in node.children:
-                    if child.type in ('block', 'field_declaration_list'):
+                    elif child.type == 'block':
                         body_node = child
-                        break
 
-                if body_node:
-                    # Process all nodes within the class body recursively
-                    for child in body_node.children:
-                        self._find_functions(child, functions, class_name, lang)
+                if class_name and body_node:
+                    self._current_classes.setdefault(
+                        class_name, {"instance_vars": {}, "methods": []}
+                    )
+                    # Add class body children to stack with class context
+                    for child in reversed(body_node.children):
+                        stack.append((child, class_name))
 
-        # Continue traversing if not in a class body
-        if not current_class:
-            for child in node.children:
-                if child.type not in (
-                    'block',
-                    'suite',
-                    'compound_statement',
-                ):  # Skip blocks we've already processed
-                    self._find_functions(child, functions, current_class, lang)
+            # Process other nodes
+            else:
+                for child in reversed(current_node.children):
+                    stack.append((child, current_class))
 
-    def _find_function_calls(  # noqa: C901
-        self, node: Node, lang: str = 'python'
-    ) -> List[str]:
+    def _find_function_calls(self, node: Node, lang: str) -> List[str]:
         """Find all function calls within a node.
 
         Args:
@@ -203,345 +158,209 @@ class RepoTreeGenerator:
             List[str]: List of function names that are called
         """
         calls = []
+        stack = [node]
 
-        def get_call_name(node: Node) -> Optional[str]:
-            """Extract the full name of a function call."""
-            if node.type == 'identifier':
-                return node.text.decode('utf8')
-            elif node.type == 'field_identifier':  # For C/C++ struct field access
-                return node.text.decode('utf8')
-            elif node.type == 'attribute':
-                parts = []
-                current = node
-                while current:
-                    if current.type == 'identifier':
-                        parts.insert(0, current.text.decode('utf8'))
-                        break
-                    elif current.type == 'attribute':
-                        # Get the rightmost identifier
-                        for child in reversed(current.children):
-                            if child.type == 'identifier':
-                                parts.insert(0, child.text.decode('utf8'))
-                                break
-                        # Move to the left part
-                        current = current.children[0]
-                    else:
-                        break
-                return '.'.join(parts) if parts else None
-            return None
+        def resolve_call_chain(node: Node) -> str:
+            parts = []
+            current = node
+            while current and current.type in ('attribute', 'identifier', 'call'):
+                if current.type == 'attribute':
+                    parts.insert(0, current.children[-1].text.decode('utf8'))
+                    current = current.children[0]
+                elif current.type == 'identifier':
+                    parts.insert(0, current.text.decode('utf8'))
+                    break
+                elif current.type == 'call':
+                    current = current.children[0]
+                else:
+                    break
+            return '.'.join(parts)
 
-        def visit(node: Node):
-            """Visit each node in the AST."""
-            # Handle function calls
-            if node.type == 'call' or (
-                lang in ('c', 'cpp') and node.type == 'call_expression'
+        while stack:
+            current_node = stack.pop()
+
+            if current_node.type == 'call':
+                func_node = current_node.children[0]
+                call_chain = resolve_call_chain(func_node)
+                if call_chain:
+                    calls.append(call_chain)
+
+            # Add children in reverse order to process them sequentially
+            for child in reversed(current_node.children):
+                stack.append(child)
+
+        return list(set(calls))
+
+    def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
+        instance_vars = {}
+        stack = [node]
+
+        def process_assignment(assignment_node: Node):
+            if (
+                len(assignment_node.children) >= 3
+                and assignment_node.children[1].type == '='
             ):
-                # Get the function being called
-                func_node = None
-                for child in node.children:
-                    if child.type in ('identifier', 'attribute', 'field_identifier'):
-                        func_node = child
-                        break
+                target = assignment_node.children[0]
+                value = assignment_node.children[2]
 
-                if func_node:
-                    name = get_call_name(func_node)
-                    if name:
-                        calls.append(name)
+                if target.type == 'attribute' and value.type == 'call':
+                    obj = target.children[0]
+                    if obj.type == 'identifier' and obj.text.decode() == 'self':
+                        attr = target.children[1].text.decode()
+                        func_node = value.children[0]
 
-            # Visit all children
-            for child in node.children:
-                # Skip certain node types that won't contain calls
-                if child.type not in (
-                    'string',
-                    'integer',
-                    'float',
-                    'comment',
-                    'parameters',
-                    'keyword',
-                    'string_literal',
-                    'number_literal',
-                ):
-                    visit(child)
+                        if func_node.type == 'identifier':
+                            instance_vars[attr] = func_node.text.decode()
+                        elif func_node.type == 'attribute':
+                            parts = []
+                            current = func_node
+                            while current.type == 'attribute':
+                                parts.insert(0, current.children[-1].text.decode())
+                                current = current.children[0]
+                            if current.type == 'identifier':
+                                parts.insert(0, current.text.decode())
+                            instance_vars[attr] = '.'.join(parts)
+                        elif func_node.type == 'call':
+                            call_parts = []
+                            current = func_node
+                            while current and current.type in ('call', 'attribute', 'identifier'):
+                                if current.type == 'call':
+                                    current = current.children[0]
+                                elif current.type == 'attribute':
+                                    call_parts.insert(0, current.children[-1].text.decode())
+                                    current = current.children[0]
+                                elif current.type == 'identifier':
+                                    call_parts.insert(0, current.text.decode())
+                                    break
+                            instance_vars[attr] = '.'.join(call_parts)
 
-        # Start from the function body
-        for child in node.children:
-            if child.type in ('block', 'compound_statement'):
-                visit(child)
-                break
+        while stack:
+            current_node = stack.pop()
 
-        # Also visit the function node itself for decorators and defaults
-        visit(node)
+            if current_node.type == 'expression_statement':
+                for child in current_node.children:
+                    if child.type == 'assignment':
+                        process_assignment(child)
+            elif current_node.type == 'assignment':
+                process_assignment(current_node)
 
-        return list(set(calls))  # Remove duplicates
+            for child in reversed(current_node.children):
+                stack.append(child)
 
-    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:  # noqa: C901
-        """Parse file content into AST data.
+        return instance_vars
 
-        Args:
-            content: File content
-            lang: Programming language identifier
-
-        Returns:
-            Dict[str, Any]: AST data including functions, classes, and their relationships
-        """
+    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:
         parser = self.parsers[lang]
         tree = parser.parse(bytes(content, 'utf8'))
 
         ast_data = {"functions": {}, "classes": {}, "calls": [], "imports": []}
 
-        # Find all functions and their calls
+        self._current_classes = {}
         self._find_functions(tree.root_node, ast_data["functions"], lang=lang)
 
-        # Extract class/struct information
-        def find_classes(node: Node):
-            if node.type == 'class_definition' or (
-                lang in ('c', 'cpp')
-                and node.type in ('struct_specifier', 'type_definition')
-            ):
-                class_name = None
+        # Process classes and methods
+        for class_name, class_info in self._current_classes.items():
+            methods = [
+                func_data["name"]
+                for func_key, func_data in ast_data["functions"].items()
+                if func_data["class"] == class_name
+            ]
 
-                if lang in ('c', 'cpp') and node.type == 'type_definition':
-                    # Handle typedef struct cases
-                    for child in node.children:
-                        if child.type == 'type_identifier':
-                            class_name = child.text.decode('utf8')
-                            break
-                        elif child.type == 'struct_specifier':
-                            for subchild in child.children:
-                                if subchild.type == 'type_identifier':
-                                    class_name = subchild.text.decode('utf8')
-                                    break
-                elif lang in ('c', 'cpp') and node.type == 'struct_specifier':
-                    # Handle direct struct definitions
-                    for child in node.children:
-                        if child.type == 'type_identifier':
-                            class_name = child.text.decode('utf8')
-                            break
-                else:
-                    # Handle Python-style class definitions
-                    for child in node.children:
-                        if child.type == 'identifier':
-                            class_name = child.text.decode('utf8')
-                            break
-
-                if class_name:
-                    # Log class discovery
-                    logger.debug(f"Found class: {class_name}")
-
-                    # Check for inheritance
-                    base_classes = []
-                    for child in node.children:
-                        if child.type == 'argument_list':
-                            for arg in child.children:
-                                if arg.type == 'identifier':
-                                    base_name = arg.text.decode('utf8')
-                                    base_classes.append(base_name)
-                                    logger.debug(
-                                        f"Found base class: {base_name} for {class_name}"
-                                    )
-                                elif arg.type == 'attribute':
-                                    # Handle module.class style base classes
-                                    parts = []
-                                    current = arg
-                                    while current:
-                                        if current.type == 'identifier':
-                                            parts.insert(0, current.text.decode('utf8'))
-                                            break
-                                        elif current.type == 'attribute':
-                                            for subchild in reversed(current.children):
-                                                if subchild.type == 'identifier':
-                                                    parts.insert(
-                                                        0, subchild.text.decode('utf8')
-                                                    )
-                                                    break
-                                            current = current.children[0]
-                                        else:
-                                            break
-                                    if parts:
-                                        base_name = '.'.join(parts)
-                                        base_classes.append(base_name)
-                                        logger.debug(
-                                            f"Found qualified base class: {base_name} for {class_name}"
-                                        )
-
-                    # Get all methods for this class by filtering functions with this class
-                    methods = [
-                        func_data["name"]
-                        for func_key, func_data in ast_data["functions"].items()
-                        if func_data["class"] == class_name
-                    ]
-                    logger.debug(f"Methods found for {class_name}: {methods}")
-
-                    ast_data["classes"][class_name] = {
-                        "name": class_name,
-                        "start_line": node.start_point[0],
-                        "end_line": node.end_point[0],
-                        "base_classes": base_classes,
-                        "methods": methods,
-                    }
-
-            for child in node.children:
-                find_classes(child)
-
-        find_classes(tree.root_node)
-
-        # Process __init__ methods to find instance variables
-        for class_name, class_data in ast_data["classes"].items():
-            if '__init__' in class_data["methods"]:
-                func_key = f"{class_name}.__init__"
-                if func_key in ast_data["functions"]:
-                    # Re-parse the function body to find instance variables
-                    init_content = content.split('\n')[ast_data["functions"][func_key]["start_line"]:ast_data["functions"][func_key]["end_line"]+1]
-                    init_node = parser.parse(bytes('\n'.join(init_content), 'utf8')).root_node
-                    class_data["instance_vars"] = self._find_instance_vars(init_node, lang)
-
-        # Extract all calls for easier querying
-        for func_name, func_data in ast_data["functions"].items():
-            for call in func_data["calls"]:
-                ast_data["calls"].append(
-                    {
-                        "name": call,
-                        "line": func_data["start_line"],  # Approximate line number
-                        "caller": func_name,
-                        "class": func_data["class"],
-                    }
-                )
+            ast_data["classes"][class_name] = {
+                "name": class_name,
+                "methods": methods,
+                "instance_vars": class_info.get("instance_vars", {}),
+            }
 
         # Resolve method calls using instance variables
         for func_key, func_data in ast_data["functions"].items():
             if func_data["class"]:
                 class_name = func_data["class"]
-                if class_name in ast_data["classes"]:
-                    instance_vars = ast_data["classes"][class_name].get("instance_vars", {})
-                    resolved_calls = []
-                    for call in func_data["calls"]:
-                        parts = call.split('.')
-                        if len(parts) >= 2 and parts[0] == 'self' and parts[1] in instance_vars:
-                            # Replace self.attr with the class name
-                            new_parts = [instance_vars[parts[1]]] + parts[2:]
-                            resolved_call = '.'.join(new_parts)
-                            resolved_calls.append(resolved_call)
+                instance_vars = ast_data["classes"][class_name]["instance_vars"]
+                resolved_calls = []
+
+                for call in func_data["calls"]:
+                    parts = call.split('.')
+                    if parts[0] == 'self' and len(parts) > 1:
+                        if parts[1] in instance_vars:
+                            resolved = instance_vars[parts[1]]
+                            if len(parts) > 2:
+                                resolved += '.' + '.'.join(parts[2:])
+                            resolved_calls.append(resolved)
                         else:
-                            resolved_calls.append(call)
-                    # Update the calls list, removing duplicates
-                    func_data["calls"] = list(set(resolved_calls))
+                            resolved_calls.append('.'.join(parts[1:]))
+                    else:
+                        resolved_calls.append(call)
 
-        # Extract imports
-        def find_imports(node: Node):
-            if node.type == 'import_statement':
-                for child in node.children:
-                    if child.type == 'dotted_name':
-                        ast_data["imports"].append(child.text.decode('utf8'))
-            elif lang in ('c', 'cpp') and node.type == 'preproc_include':
-                # Handle C/C++ #include statements
-                for child in node.children:
-                    if child.type in ('string_literal', 'system_lib_string'):
-                        include_path = child.text.decode('utf8').strip('"<>')
-                        ast_data["imports"].append(include_path)
+                func_data["calls"] = list(set(resolved_calls))
 
-            for child in node.children:
-                find_imports(child)
+        # Collect all calls
+        for func_name, func_data in ast_data["functions"].items():
+            for call in func_data["calls"]:
+                ast_data["calls"].append(
+                    {
+                        "name": call,
+                        "line": func_data["start_line"],
+                        "caller": func_name,
+                        "class": func_data["class"],
+                    }
+                )
+
+        # Process imports
+        def find_imports(root: Node):
+            stack = [root]
+            while stack:
+                node = stack.pop()
+                if node.type == 'import_statement':
+                    for child in node.children:
+                        if child.type == 'dotted_name':
+                            ast_data["imports"].append(child.text.decode('utf8'))
+                elif node.type == 'import_from_statement':
+                    module = []
+                    for child in node.children:
+                        if child.type == 'dotted_name':
+                            module.append(child.text.decode('utf8'))
+                        elif child.type == 'import_prefix':
+                            module.append(child.text.decode('utf8'))
+                    if module:
+                        ast_data["imports"].append('.'.join(module))
+                stack.extend(node.children)
 
         find_imports(tree.root_node)
 
         return ast_data
 
-    def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
-        """Find instance variables initialized with class instances in __init__ method."""
-        instance_vars = {}
-        def visit(n: Node):
-            if lang == 'python' and n.type == 'assignment':
-                target = None
-                value = None
-                # Extract target and value from assignment
-                for child in n.children:
-                    if child.type == 'attribute':
-                        target = child
-                    elif child.type == 'call':
-                        value = child
-                    elif child.type == '=' and len(n.children) >= 3:
-                        target = n.children[0]
-                        value = n.children[2]
-                if target and value and target.type == 'attribute' and value.type == 'call':
-                    # Check if target is self.attribute
-                    obj = target.children[0]
-                    if obj.type == 'identifier' and obj.text.decode('utf8') == 'self':
-                        attr = target.children[1].text.decode('utf8')
-                        # Check if value is a class constructor call
-                        func = value.children[0]
-                        if func.type == 'identifier':
-                            class_name = func.text.decode('utf8')
-                            instance_vars[attr] = class_name
-                        elif func.type == 'attribute':
-                            # Handle cases like module.ClassName()
-                            class_name = func.children[-1].text.decode('utf8')
-                            instance_vars[attr] = class_name
-            for child in n.children:
-                visit(child)
-        visit(node)
-        return instance_vars
-
     @staticmethod
     def _process_file_worker(
         file_info: Tuple[str, Dict[str, Any], str, str, Optional[str]]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
-        """Process a single file and return its AST data.
-
-        Args:
-            file_info: Tuple containing (path, item, repo_url, ref, token)
-
-        Returns:
-            Tuple[str, Optional[Dict[str, Any]]]: File path and its AST data if successful
-        """
         path, item, repo_url, ref, token = file_info
-
-        # Create a new instance for this process
         processor = RepoTreeGenerator(token=token)
         try:
-            # Only process supported file types
             lang = processor._detect_language(path)
             if lang:
-                # Get file content using the correct ref
                 content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
                 if content:
                     ast_data = processor._parse_file_ast(content, lang)
-                    return path, {
-                        "language": lang,
-                        "ast": ast_data,
-                    }
+                    return path, {"language": lang, "ast": ast_data}
         except Exception as e:
-            print(f"Failed to process {path}: {e}")
+            logger.error(f"Failed to process {path}: {str(e)}")
         return path, None
 
-    def generate_repo_tree(  # noqa: C901
+    def generate_repo_tree(
         self, repo_url: str, ref: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Generate repository AST tree.
-
-        Args:
-            repo_url: URL to the repository
-            ref: Optional git reference (branch, tag, commit). If not provided, uses default branch.
-
-        Returns:
-            Dict[str, Any]: Repository AST tree data
-
-        Raises:
-            ValueError: If provided ref does not exist in the repository
-        """
-        # Initialize provider if needed
         if not self.provider:
             self.provider = get_provider(repo_url, self.token)
 
-        # Validate ref and get default if not provided
         try:
             ref = self.provider.validate_ref(repo_url, ref)
         except ValueError as e:
             raise e
         except Exception as e:
-            logger.warning(f"Failed to get default branch: {e}")
+            logger.warning(f"Failed to get default branch: {str(e)}")
             ref = 'main'
 
-        # Fetch repository structure
         try:
             repo_structure = self.provider.fetch_repo_structure(repo_url, ref=ref)
         except Exception as e:
@@ -551,53 +370,37 @@ class RepoTreeGenerator:
 
         repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
 
-        # Collect all files to process
         files_to_process = []
 
         def collect_files(structure: Dict[str, Any], current_path: str = ""):
-            """Recursively collect files from repository structure."""
-            if not isinstance(structure, dict):
-                return
-
             for name, item in structure.items():
                 path = os.path.join(current_path, name)
-
                 if isinstance(item, dict):
                     if "type" in item and item["type"] == "blob":
                         files_to_process.append((path, item, repo_url, ref))
                     else:
-                        # This is a directory
                         collect_files(item, path)
 
         collect_files(repo_structure)
 
-        # Process files
-        if self.use_multiprocessing and len(files_to_process) > 0:
-            # Process in parallel
-            num_processes = min(multiprocessing.cpu_count(), len(files_to_process))
-            # Add token to file_info for worker processes
+        if self.use_multiprocessing and files_to_process:
             files_to_process_mp = [
                 (path, item, repo_url, ref, self.token)
                 for path, item, repo_url, ref in files_to_process
             ]
 
-            with multiprocessing.Pool(processes=num_processes) as pool:
-                results = pool.map(
-                    RepoTreeGenerator._process_file_worker, files_to_process_mp
-                )
-
-                # Add successful results to repo_tree
+            with multiprocessing.Pool(
+                processes=min(multiprocessing.cpu_count(), len(files_to_process))
+            ) as pool:
+                results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
-                    if data is not None:
+                    if data:
                         repo_tree["files"][path] = data
         else:
-            # Process sequentially (for testing or small number of files)
             for path, item, repo_url, ref in files_to_process:
                 try:
-                    # Only process supported file types
                     lang = self._detect_language(path)
                     if lang:
-                        # Get file content using the correct ref
                         content = self._get_file_content(
                             f"{repo_url}/-/blob/{ref}/{path}"
                         )
@@ -608,15 +411,10 @@ class RepoTreeGenerator:
                                 "ast": ast_data,
                             }
                 except Exception as e:
-                    print(f"Failed to process {path}: {e}")
+                    logger.error(f"Failed to process {path}: {str(e)}")
+
         return repo_tree
 
     def save_repo_tree(self, repo_tree: Dict[str, Any], output_path: str):
-        """Save repository AST tree to a file.
-
-        Args:
-            repo_tree: Repository AST tree data
-            output_path: Path to output file
-        """
         with open(output_path, 'w') as f:
             json.dump(repo_tree, f, indent=2)
