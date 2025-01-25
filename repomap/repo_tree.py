@@ -148,7 +148,6 @@ class RepoTreeGenerator:
                     stack.append((child, current_class))
 
     def _find_function_calls(self, node: Node, lang: str, current_class: Optional[str] = None) -> List[str]:
-        """Resolve method calls using class instance variables with improved attribute handling."""
         if lang not in self.queries:
             return []
         
@@ -161,44 +160,44 @@ class RepoTreeGenerator:
                 call_parts = []
                 current_node = n
                 
-                # Handle attribute-based calls
                 if current_node.type == 'attribute':
-                    # Walk up the attribute chain
+                    # CORRECTED: Proper attribute chain decomposition
                     parts = []
                     while current_node.type == 'attribute':
-                        parts.insert(0, current_node.children[1].text.decode('utf8'))
+                        # Get attribute name from child[2]
+                        parts.insert(0, current_node.children[2].text.decode('utf8'))
                         current_node = current_node.children[0]
                     if current_node.type == 'identifier':
                         parts.insert(0, current_node.text.decode('utf8'))
                     call_parts = parts
                 else:
-                    # Simple identifier call
-                    call_parts = [n.text.decode('utf8')]
+                    call_parts = [current_node.text.decode('utf8')]
 
-                # Skip 'self' at start of call chain
+                # Skip 'self' at start
                 if call_parts and call_parts[0] == 'self':
                     call_parts = call_parts[1:]
+                    if not call_parts:
+                        continue
 
-                # Resolve variable references using instance variables
+                # Resolve using instance variables
                 if current_class and call_parts:
                     class_info = self._current_classes.get(current_class, {})
                     instance_vars = class_info.get("instance_vars", {})
-                    
-                    # Resolve each part sequentially using instance variables
                     resolved = []
-                    for part in call_parts:
-                        if part in instance_vars:
-                            # Split the resolved class into parts and add to resolved chain
+                    found_var = False
+                    
+                    for i, part in enumerate(call_parts):
+                        if part in instance_vars and not found_var:
                             resolved.extend(instance_vars[part].split('.'))
+                            found_var = True
                         else:
                             resolved.append(part)
                     
-                    # Only keep the resolved chain if we made substitutions
-                    if resolved != call_parts:
-                        call_parts = resolved
-
-                if call_parts:
-                    calls.append('.'.join(call_parts))
+                    if resolved and resolved[-1] != '__init__':
+                        final_call = '.'.join(resolved)
+                        # Add final validation filter
+                        if final_call.count('.') >= 1 or final_call in instance_vars.values():
+                            calls.append(final_call)
 
         return list(set(calls))
 
@@ -212,29 +211,36 @@ class RepoTreeGenerator:
                     target = assignment_node.children[0]
                     value = assignment_node.children[2]
 
-                    if target.type == 'attribute' and target.children[0].type == 'identifier' and target.children[0].text.decode() == 'self':
-                        attr = target.children[1].text.decode()
-                        
-                        # Handle constructor calls and class references
-                        class_name = None
-                        if value.type == 'call':
-                            # Get the constructor class name
-                            current = value.children[0]
-                            class_parts = []
-                            while current.type in ['attribute', 'identifier']:
-                                if current.type == 'attribute':
-                                    class_parts.insert(0, current.children[1].text.decode())
-                                    current = current.children[0]
-                                else:
-                                    class_parts.insert(0, current.text.decode())
-                                    break
-                            class_name = '.'.join(class_parts)
-                        elif value.type == 'identifier':
-                            # Direct class/type reference
-                            class_name = value.text.decode()
-                        
-                        if class_name:
-                            instance_vars[attr] = class_name
+                    # Handle nested attributes like self.obj.attr = Value()
+                    if target.type == 'attribute':
+                        attr_parts = []
+                        current = target
+                        while current.type == 'attribute':
+                            # CORRECTED: Get attribute name from child[2] instead of child[1]
+                            attr_parts.insert(0, current.children[2].text.decode())
+                            current = current.children[0]
+                        if current.type == 'identifier' and current.text.decode() == 'self':
+                            attr = '.'.join(attr_parts)
+                            
+                            # Get class name from RHS
+                            class_name = None
+                            if value.type == 'call':
+                                current = value.children[0]
+                                class_parts = []
+                                while current.type in ['attribute', 'identifier']:
+                                    if current.type == 'attribute':
+                                        # CORRECTED: Get attribute name from child[2]
+                                        class_parts.insert(0, current.children[2].text.decode())
+                                        current = current.children[0]
+                                    else:
+                                        class_parts.insert(0, current.text.decode())
+                                        break
+                                class_name = '.'.join(class_parts)
+                            elif value.type == 'identifier':
+                                class_name = value.text.decode()
+                            
+                            if class_name:
+                                instance_vars[attr] = class_name
 
         while stack:
             current_node = stack.pop()
@@ -242,7 +248,6 @@ class RepoTreeGenerator:
             if current_node.type in ['expression_statement', 'assignment']:
                 process_assignment(current_node)
             
-            # Add children to stack in reverse order for DFS
             for child in reversed(current_node.children):
                 stack.append(child)
 
