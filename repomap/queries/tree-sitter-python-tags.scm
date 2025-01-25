@@ -7,8 +7,5 @@
 (call
   function: [
     (identifier) @name.reference.call
-    (attribute
-      object: (_)* @obj
-      attribute: (identifier) @name.reference.call
-    ) 
+    (attribute) @name.reference.call 
   ]) @reference.call

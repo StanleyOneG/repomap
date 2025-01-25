@@ -96,7 +96,7 @@ class RepoTreeGenerator:
                     )
 
                     calls = (
-                        self._find_function_calls(current_node, lang)
+                        self._find_function_calls(current_node, lang, current_class)
                         if body_node
                         else []
                     )
@@ -147,8 +147,8 @@ class RepoTreeGenerator:
                 for child in reversed(current_node.children):
                     stack.append((child, current_class))
 
-    def _find_function_calls(self, node: Node, lang: str) -> List[str]:
-        """Optimized function call resolution with complexity safeguards."""
+    def _find_function_calls(self, node: Node, lang: str, current_class: Optional[str] = None) -> List[str]:
+        """Resolve method calls using class instance variables."""
         if lang not in self.queries:
             return []
         
@@ -156,18 +156,42 @@ class RepoTreeGenerator:
         query = self.queries[lang]
         captures = query.captures(node)
         
-        # Use set for O(1) lookups
-        processed_nodes = set()
-        
         for n, tag in captures:
-            if tag == 'name.reference.call' and id(n) not in processed_nodes:
-                # Efficiently get full call expression using tree-sitter's text
-                call_expression = n.parent.text.decode('utf8')
-                if '(' in call_expression:
-                    call_expression = call_expression.split('(')[0]
-                calls.append(call_expression)
-                processed_nodes.add(id(n))
-        
+            if tag == 'name.reference.call':
+                # Get full call chain
+                call_parts = []
+                current = n
+                while current.parent and current.parent.type in ('attribute', 'call'):
+                    if current.type == 'identifier':
+                        call_parts.insert(0, current.text.decode('utf8'))
+                    current = current.parent
+                
+                # Resolve instance variables using class information
+                if current_class and call_parts:
+                    class_info = self._current_classes.get(current_class, {})
+                    instance_vars = class_info.get("instance_vars", {})
+                    
+                    # Resolve variable chain starting with self
+                    if call_parts[0] == 'self' and len(call_parts) > 1:
+                        var_name = call_parts[1]
+                        if var_name in instance_vars:
+                            # Replace self.var with actual class name
+                            call_parts = [instance_vars[var_name]] + call_parts[2:]
+                        else:
+                            # Just remove self if no var info
+                            call_parts = call_parts[1:]
+
+                    # Handle chained calls through instance variables
+                    resolved = []
+                    for part in call_parts:
+                        if part in instance_vars:
+                            resolved.append(instance_vars[part])
+                        else:
+                            resolved.append(part)
+                    call_parts = resolved
+
+                calls.append('.'.join(call_parts))
+
         return list(set(calls))
 
     def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
@@ -182,36 +206,25 @@ class RepoTreeGenerator:
                 target = assignment_node.children[0]
                 value = assignment_node.children[2]
 
-                if target.type == 'attribute' and value.type == 'call':
-                    obj = target.children[0]
-                    if obj.type == 'identifier' and obj.text.decode() == 'self':
-                        attr = target.children[1].text.decode()
-                        func_node = value.children[0]
-
-                        if func_node.type == 'identifier':
-                            instance_vars[attr] = func_node.text.decode()
-                        elif func_node.type == 'attribute':
-                            parts = []
-                            current = func_node
-                            while current.type == 'attribute':
-                                parts.insert(0, current.children[-1].text.decode())
-                                current = current.children[0]
-                            if current.type == 'identifier':
-                                parts.insert(0, current.text.decode())
+                if target.type == 'attribute' and target.children[0].type == 'identifier' and target.children[0].text.decode() == 'self':
+                    attr = target.children[1].text.decode()
+                    
+                    # Detect direct class instantiation (e.g. self.var = ClassName())
+                    if value.type == 'call' and value.children[0].type == 'identifier':
+                        # This is a constructor call
+                        class_name = value.children[0].text.decode()
+                        instance_vars[attr] = class_name
+                    # Handle cases where assignment comes from a method call (e.g. get_instance())
+                    elif value.type == 'call' and value.children[0].type == 'attribute':
+                        # Try to resolve the full chain (e.g. module.ClassName())
+                        parts = []
+                        current = value.children[0]
+                        while current.type == 'attribute':
+                            parts.insert(0, current.children[-1].text.decode())
+                            current = current.children[0]
+                        if current.type == 'identifier':
+                            parts.insert(0, current.text.decode())
                             instance_vars[attr] = '.'.join(parts)
-                        elif func_node.type == 'call':
-                            call_parts = []
-                            current = func_node
-                            while current and current.type in ('call', 'attribute', 'identifier'):
-                                if current.type == 'call':
-                                    current = current.children[0]
-                                elif current.type == 'attribute':
-                                    call_parts.insert(0, current.children[-1].text.decode())
-                                    current = current.children[0]
-                                elif current.type == 'identifier':
-                                    call_parts.insert(0, current.text.decode())
-                                    break
-                            instance_vars[attr] = '.'.join(call_parts)
 
         while stack:
             current_node = stack.pop()
@@ -251,30 +264,21 @@ class RepoTreeGenerator:
                 "instance_vars": class_info.get("instance_vars", {}),
             }
 
-        # Resolve method calls using instance variables
+        # Second pass to resolve calls with class context
         for func_key, func_data in ast_data["functions"].items():
-            if func_data["class"]:
-                class_name = func_data["class"]
-                instance_vars = ast_data["classes"][class_name]["instance_vars"]
-                resolved_calls = []
-                        
-                for call in func_data["calls"]:
-                    parts = call.split('.')
-                            
-                    # Handle self references and instance variables
-                    if parts[0] == 'self' and len(parts) > 1:
-                        if parts[1] in instance_vars:
-                            # Replace self.x with the class name from instance vars
-                            resolved = instance_vars[parts[1]]
-                            if len(parts) > 2:
-                                resolved += '.' + '.'.join(parts[2:])
-                            resolved_calls.append(resolved)
-                        else:
-                            # If no instance var found, keep the chain without self
-                            resolved_calls.append('.'.join(parts[1:]))
-                    else:
-                        resolved_calls.append(call)
-                        
+            current_class = func_data["class"]
+            class_vars = self._current_classes.get(current_class, {}).get("instance_vars", {}) if current_class else {}
+            
+            # Get fresh calls with proper resolution
+            func_node = next(
+                (n for n in tree.root_node.children 
+                 if n.start_point[0] == func_data["start_line"] 
+                 and n.end_point[0] == func_data["end_line"]),
+                None
+            )
+            
+            if func_node:
+                resolved_calls = self._find_function_calls(func_node, lang, current_class)
                 func_data["calls"] = list(set(resolved_calls))
 
         # Collect all calls
