@@ -148,7 +148,7 @@ class RepoTreeGenerator:
                     stack.append((child, current_class))
 
     def _find_function_calls(self, node: Node, lang: str, current_class: Optional[str] = None) -> List[str]:
-        """Resolve method calls using class instance variables."""
+        """Resolve method calls using class instance variables with improved attribute handling."""
         if lang not in self.queries:
             return []
         
@@ -158,51 +158,50 @@ class RepoTreeGenerator:
         
         for n, tag in captures:
             if tag == 'name.reference.call':
-                # Get full call chain by traversing attribute nodes
                 call_parts = []
                 current_node = n
                 
-                while True:
-                    if current_node.type == 'identifier':
-                        call_parts.insert(0, current_node.text.decode('utf8'))
-                        break
-                    elif current_node.type == 'attribute':
-                        # Get the rightmost part of the attribute
+                # Handle attribute-based calls
+                if current_node.type == 'attribute':
+                    # Walk up the attribute chain
+                    while current_node.type == 'attribute':
                         attr_part = current_node.children[1].text.decode('utf8')
                         call_parts.insert(0, attr_part)
-                        # Move to the left side of the attribute
                         current_node = current_node.children[0]
-                    elif current_node.type == 'call':
-                        # For calls, move to the function part
-                        current_node = current_node.children[0]
-                    else:
-                        break
+                    
+                    # Add root identifier if exists
+                    if current_node.type == 'identifier':
+                        root_part = current_node.text.decode('utf8')
+                        call_parts.insert(0, root_part)
+                else:
+                    # Simple identifier call
+                    call_parts = [n.text.decode('utf8')]
 
-                # Resolve instance variables using class information
+                # Skip 'self' at start of call chain
+                if call_parts and call_parts[0] == 'self':
+                    call_parts = call_parts[1:]
+
+                # Resolve variable references using instance variables
                 if current_class and call_parts:
                     class_info = self._current_classes.get(current_class, {})
                     instance_vars = class_info.get("instance_vars", {})
                     
-                    # Resolve variable chain starting with self
-                    if call_parts[0] == 'self' and len(call_parts) > 1:
-                        var_name = call_parts[1]
-                        if var_name in instance_vars:
-                            # Replace self.var with actual class name
-                            call_parts = [instance_vars[var_name]] + call_parts[2:]
-                        else:
-                            # Just remove self if no var info
-                            call_parts = call_parts[1:]
-
-                    # Handle chained calls through instance variables
+                    # Resolve only the first part that matches instance variables
                     resolved = []
-                    for part in call_parts:
+                    for i, part in enumerate(call_parts):
                         if part in instance_vars:
-                            resolved.append(instance_vars[part])
+                            resolved.extend(instance_vars[part].split('.'))
+                            # Add remaining parts as-is after first resolution
+                            resolved.extend(call_parts[i+1:])
+                            break
                         else:
                             resolved.append(part)
-                    call_parts = resolved
-
-                if call_parts:
+                    else:
+                        resolved = call_parts
+                    
+                    if resolved:
+                        calls.append('.'.join(resolved))
+                else:
                     calls.append('.'.join(call_parts))
 
         return list(set(calls))
@@ -219,25 +218,25 @@ class RepoTreeGenerator:
 
                     if target.type == 'attribute' and target.children[0].type == 'identifier' and target.children[0].text.decode() == 'self':
                         attr = target.children[1].text.decode()
+                        
+                        # Handle constructor calls and class references
                         class_name = None
-
-                        # Handle value types
                         if value.type == 'call':
-                            # Direct constructor call (e.g. ClassName())
+                            # Get the constructor class name
                             current = value.children[0]
-                            parts = []
+                            class_parts = []
                             while current.type in ['attribute', 'identifier']:
                                 if current.type == 'attribute':
-                                    parts.insert(0, current.children[1].text.decode())
+                                    class_parts.insert(0, current.children[1].text.decode())
                                     current = current.children[0]
                                 else:
-                                    parts.insert(0, current.text.decode())
+                                    class_parts.insert(0, current.text.decode())
                                     break
-                            class_name = '.'.join(parts)
+                            class_name = '.'.join(class_parts)
                         elif value.type == 'identifier':
-                            # Direct class reference
+                            # Direct class/type reference
                             class_name = value.text.decode()
-
+                        
                         if class_name:
                             instance_vars[attr] = class_name
 
