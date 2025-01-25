@@ -164,15 +164,13 @@ class RepoTreeGenerator:
                 # Handle attribute-based calls
                 if current_node.type == 'attribute':
                     # Walk up the attribute chain
+                    parts = []
                     while current_node.type == 'attribute':
-                        attr_part = current_node.children[1].text.decode('utf8')
-                        call_parts.insert(0, attr_part)
+                        parts.insert(0, current_node.children[1].text.decode('utf8'))
                         current_node = current_node.children[0]
-                    
-                    # Add root identifier if exists
                     if current_node.type == 'identifier':
-                        root_part = current_node.text.decode('utf8')
-                        call_parts.insert(0, root_part)
+                        parts.insert(0, current_node.text.decode('utf8'))
+                    call_parts = parts
                 else:
                     # Simple identifier call
                     call_parts = [n.text.decode('utf8')]
@@ -186,22 +184,20 @@ class RepoTreeGenerator:
                     class_info = self._current_classes.get(current_class, {})
                     instance_vars = class_info.get("instance_vars", {})
                     
-                    # Resolve only the first part that matches instance variables
+                    # Resolve each part sequentially using instance variables
                     resolved = []
-                    for i, part in enumerate(call_parts):
+                    for part in call_parts:
                         if part in instance_vars:
+                            # Split the resolved class into parts and add to resolved chain
                             resolved.extend(instance_vars[part].split('.'))
-                            # Add remaining parts as-is after first resolution
-                            resolved.extend(call_parts[i+1:])
-                            break
                         else:
                             resolved.append(part)
-                    else:
-                        resolved = call_parts
                     
-                    if resolved:
-                        calls.append('.'.join(resolved))
-                else:
+                    # Only keep the resolved chain if we made substitutions
+                    if resolved != call_parts:
+                        call_parts = resolved
+
+                if call_parts:
                     calls.append('.'.join(call_parts))
 
         return list(set(calls))
