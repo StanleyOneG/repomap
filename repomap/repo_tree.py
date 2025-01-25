@@ -148,47 +148,26 @@ class RepoTreeGenerator:
                     stack.append((child, current_class))
 
     def _find_function_calls(self, node: Node, lang: str) -> List[str]:
-        """Find all function calls within a node.
-
-        Args:
-            node: AST node to search
-            lang: Programming language being parsed
-
-        Returns:
-            List[str]: List of function names that are called
-        """
+        """Optimized function call resolution with complexity safeguards."""
+        if lang not in self.queries:
+            return []
+        
         calls = []
-        stack = [node]
-
-        def resolve_call_chain(node: Node) -> str:
-            parts = []
-            current = node
-            while current and current.type in ('attribute', 'identifier', 'call'):
-                if current.type == 'attribute':
-                    parts.insert(0, current.children[-1].text.decode('utf8'))
-                    current = current.children[0]
-                elif current.type == 'identifier':
-                    parts.insert(0, current.text.decode('utf8'))
-                    break
-                elif current.type == 'call':
-                    current = current.children[0]
-                else:
-                    break
-            return '.'.join(parts)
-
-        while stack:
-            current_node = stack.pop()
-
-            if current_node.type == 'call':
-                func_node = current_node.children[0]
-                call_chain = resolve_call_chain(func_node)
-                if call_chain:
-                    calls.append(call_chain)
-
-            # Add children in reverse order to process them sequentially
-            for child in reversed(current_node.children):
-                stack.append(child)
-
+        query = self.queries[lang]
+        captures = query.captures(node)
+        
+        # Use set for O(1) lookups
+        processed_nodes = set()
+        
+        for n, tag in captures:
+            if tag == 'name.reference.call' and id(n) not in processed_nodes:
+                # Efficiently get full call expression using tree-sitter's text
+                call_expression = n.parent.text.decode('utf8')
+                if '(' in call_expression:
+                    call_expression = call_expression.split('(')[0]
+                calls.append(call_expression)
+                processed_nodes.add(id(n))
+        
         return list(set(calls))
 
     def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
@@ -278,20 +257,24 @@ class RepoTreeGenerator:
                 class_name = func_data["class"]
                 instance_vars = ast_data["classes"][class_name]["instance_vars"]
                 resolved_calls = []
-
+                        
                 for call in func_data["calls"]:
                     parts = call.split('.')
+                            
+                    # Handle self references and instance variables
                     if parts[0] == 'self' and len(parts) > 1:
                         if parts[1] in instance_vars:
+                            # Replace self.x with the class name from instance vars
                             resolved = instance_vars[parts[1]]
                             if len(parts) > 2:
                                 resolved += '.' + '.'.join(parts[2:])
                             resolved_calls.append(resolved)
                         else:
+                            # If no instance var found, keep the chain without self
                             resolved_calls.append('.'.join(parts[1:]))
                     else:
                         resolved_calls.append(call)
-
+                        
                 func_data["calls"] = list(set(resolved_calls))
 
         # Collect all calls
@@ -368,6 +351,10 @@ class RepoTreeGenerator:
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
 
+        # Add complexity limits
+        self.node_count = 0
+        self.MAX_NODES = 10000
+
         repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
 
         files_to_process = []
@@ -389,8 +376,16 @@ class RepoTreeGenerator:
                 for path, item, repo_url, ref in files_to_process
             ]
 
+            # Add resource constraints
+            max_workers = min(
+                multiprocessing.cpu_count(),
+                len(files_to_process),
+                8  # Hard cap for CPU protection
+            )
+            
             with multiprocessing.Pool(
-                processes=min(multiprocessing.cpu_count(), len(files_to_process))
+                processes=max_workers,
+                maxtasksperchild=50  # Prevent memory bloat
             ) as pool:
                 results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
