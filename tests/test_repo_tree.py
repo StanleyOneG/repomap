@@ -249,7 +249,7 @@ def test_generate_repo_tree_python(
     outer_calls = functions["outer_function"]["calls"]
     assert "inner_function" in outer_calls
     assert "process_result" in outer_calls
-
+    
     # Verify process_result calls
     process_calls = functions["process_result"]["calls"]
     assert "validate" in process_calls
@@ -258,6 +258,17 @@ def test_generate_repo_tree_python(
     # Verify inner_function calls
     inner_calls = functions["inner_function"]["calls"]
     assert "helper_function" in inner_calls
+
+    # Verify class method calls
+    process_method = functions["DataProcessor.process"]
+    assert "DataProcessor.validate_data" in process_method["calls"]
+    assert "DataProcessor.transform_data" in process_method["calls"]
+    assert "DataProcessor.save_result" in process_method["calls"]
+    assert "outer_function" in process_method["calls"]
+
+    validate_data_method = functions["DataProcessor.validate_data"]
+    assert "validate" in validate_data_method["calls"]
+    assert "DataProcessor._internal_validate" in validate_data_method["calls"]
 
     # Verify classes
     classes = ast_data["classes"]

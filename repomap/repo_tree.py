@@ -159,45 +159,54 @@ class RepoTreeGenerator:
             if tag == 'name.reference.call':
                 call_parts = []
                 current_node = n
+                skip_self = False
                 
+                # Decompose attribute chains
                 if current_node.type == 'attribute':
-                    # CORRECTED: Proper attribute chain decomposition
                     parts = []
-                    while current_node.type == 'attribute':
-                        # Get attribute name from child[2]
-                        parts.insert(0, current_node.children[2].text.decode('utf8'))
-                        current_node = current_node.children[0]
-                    if current_node.type == 'identifier':
-                        parts.insert(0, current_node.text.decode('utf8'))
+                    current = current_node
+                    while current.type == 'attribute':
+                        parts.insert(0, current.children[2].text.decode('utf8'))
+                        current = current.children[0]
+                    if current.type == 'identifier':
+                        parts.insert(0, current.text.decode('utf8'))
                     call_parts = parts
                 else:
                     call_parts = [current_node.text.decode('utf8')]
 
-                # Skip 'self' at start
+                # Check for self reference
                 if call_parts and call_parts[0] == 'self':
                     call_parts = call_parts[1:]
-                    if not call_parts:
-                        continue
+                    skip_self = True
 
-                # Resolve using instance variables
+                # Resolve using instance variables and current class
+                resolved = []
                 if current_class and call_parts:
                     class_info = self._current_classes.get(current_class, {})
                     instance_vars = class_info.get("instance_vars", {})
-                    resolved = []
                     found_var = False
                     
-                    for i, part in enumerate(call_parts):
+                    # Resolve instance variables
+                    for part in call_parts:
                         if part in instance_vars and not found_var:
                             resolved.extend(instance_vars[part].split('.'))
                             found_var = True
                         else:
                             resolved.append(part)
                     
-                    if resolved and resolved[-1] != '__init__':
-                        final_call = '.'.join(resolved)
-                        # Add final validation filter
-                        if final_call.count('.') >= 1 or final_call in instance_vars.values():
-                            calls.append(final_call)
+                    # Prepend class name for method calls on self
+                    if skip_self and not found_var:
+                        resolved.insert(0, current_class)
+
+                # Final validation and cleanup
+                if resolved:
+                    final_call = '.'.join(resolved)
+                    if final_call.count('.') >= 1 and final_call != '__init__':
+                        calls.append(final_call)
+                elif not resolved and call_parts:
+                    final_call = '.'.join(call_parts)
+                    if final_call.count('.') >= 1 and final_call != '__init__':
+                        calls.append(final_call)
 
         return list(set(calls))
 
@@ -206,17 +215,17 @@ class RepoTreeGenerator:
         stack = [node]
 
         def process_assignment(assignment_node: Node):
-            if assignment_node.type == 'assignment':
-                if len(assignment_node.children) >= 3 and assignment_node.children[1].type == '=':
+            if assignment_node.type in ['assignment', 'augmented_assignment']:
+                # Handle different assignment patterns
+                if assignment_node.child_count >= 3:
                     target = assignment_node.children[0]
-                    value = assignment_node.children[2]
+                    value = assignment_node.children[-1]
 
-                    # Handle nested attributes like self.obj.attr = Value()
+                    # Handle attribute assignments (self.xxx = ...)
                     if target.type == 'attribute':
                         attr_parts = []
                         current = target
                         while current.type == 'attribute':
-                            # CORRECTED: Get attribute name from child[2] instead of child[1]
                             attr_parts.insert(0, current.children[2].text.decode())
                             current = current.children[0]
                         if current.type == 'identifier' and current.text.decode() == 'self':
@@ -225,18 +234,12 @@ class RepoTreeGenerator:
                             # Get class name from RHS
                             class_name = None
                             if value.type == 'call':
-                                current = value.children[0]
-                                class_parts = []
-                                while current.type in ['attribute', 'identifier']:
-                                    if current.type == 'attribute':
-                                        # CORRECTED: Get attribute name from child[2]
-                                        class_parts.insert(0, current.children[2].text.decode())
-                                        current = current.children[0]
-                                    else:
-                                        class_parts.insert(0, current.text.decode())
-                                        break
-                                class_name = '.'.join(class_parts)
+                                # Handle constructor calls (MyClass())
+                                fn_node = value.children[0]
+                                if fn_node.type == 'identifier':
+                                    class_name = fn_node.text.decode()
                             elif value.type == 'identifier':
+                                # Handle direct class assignments
                                 class_name = value.text.decode()
                             
                             if class_name:
@@ -244,12 +247,8 @@ class RepoTreeGenerator:
 
         while stack:
             current_node = stack.pop()
-            
-            if current_node.type in ['expression_statement', 'assignment']:
-                process_assignment(current_node)
-            
-            for child in reversed(current_node.children):
-                stack.append(child)
+            process_assignment(current_node)
+            stack.extend(reversed(current_node.children))
 
         return instance_vars
 
