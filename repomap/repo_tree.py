@@ -161,7 +161,6 @@ class RepoTreeGenerator:
                 current_node = n
                 skip_self = False
                 
-                # Decompose attribute chains
                 if current_node.type == 'attribute':
                     parts = []
                     current = current_node
@@ -174,19 +173,17 @@ class RepoTreeGenerator:
                 else:
                     call_parts = [current_node.text.decode('utf8')]
 
-                # Check for self reference
                 if call_parts and call_parts[0] == 'self':
                     call_parts = call_parts[1:]
                     skip_self = True
 
-                # Resolve using instance variables and current class
                 resolved = []
                 if current_class and call_parts:
                     class_info = self._current_classes.get(current_class, {})
                     instance_vars = class_info.get("instance_vars", {})
+                    class_methods = class_info.get("methods", [])
                     found_var = False
                     
-                    # Resolve instance variables
                     for part in call_parts:
                         if part in instance_vars and not found_var:
                             resolved.extend(instance_vars[part].split('.'))
@@ -194,18 +191,20 @@ class RepoTreeGenerator:
                         else:
                             resolved.append(part)
                     
-                    # Prepend class name for method calls on self
                     if skip_self and not found_var:
-                        resolved.insert(0, current_class)
+                        if call_parts[0] in class_methods:
+                            resolved.insert(0, current_class)
+                            found_var = True
+                        else:
+                            resolved.insert(0, current_class)
 
-                # Final validation and cleanup
                 if resolved:
                     final_call = '.'.join(resolved)
-                    if final_call.count('.') >= 1 and final_call != '__init__':
+                    if final_call != '__init__':
                         calls.append(final_call)
                 elif not resolved and call_parts:
                     final_call = '.'.join(call_parts)
-                    if final_call.count('.') >= 1 and final_call != '__init__':
+                    if final_call != '__init__':
                         calls.append(final_call)
 
         return list(set(calls))

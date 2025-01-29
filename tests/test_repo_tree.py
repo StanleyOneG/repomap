@@ -287,15 +287,17 @@ def test_generate_repo_tree_python(
     # Verify method calls
     process_method = functions["DataProcessor.process"]
     assert process_method["class"] == "DataProcessor"
-    assert "validate_data" in process_method["calls"]
-    assert "transform_data" in process_method["calls"]
-    assert "save_result" in process_method["calls"]
+    assert "DataProcessor.validate_data" in process_method["calls"]
+    assert "DataProcessor.transform_data" in process_method["calls"]
+    assert "DataProcessor.save_result" in process_method["calls"]
     assert "outer_function" in process_method["calls"]
+    assert "print" in process_method["calls"]
 
     validate_data_method = functions["DataProcessor.validate_data"]
     assert validate_data_method["class"] == "DataProcessor"
     assert "validate" in validate_data_method["calls"]
-    assert "_internal_validate" in validate_data_method["calls"]
+    assert "DataProcessor._internal_validate" in validate_data_method["calls"]
+    assert "print" in validate_data_method["calls"]
 
     transform_data_method = functions["DataProcessor.transform_data"]
     assert transform_data_method["class"] == "DataProcessor"
@@ -563,11 +565,12 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     # Verify function calls
     init_point_calls = functions["init_point"]["calls"]
     assert "validate_point" in init_point_calls
-
+    
     process_shape_calls = functions["process_shape"]["calls"]
     assert "init_point" in process_shape_calls
     assert "calculate_area" in process_shape_calls
     assert "transform_shape" in process_shape_calls
+    assert "print" in process_shape_calls
 
     # Verify structs/typedefs as classes
     classes = ast_data["classes"]
