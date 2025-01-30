@@ -199,11 +199,11 @@ class RepoTreeGenerator:
             if tag == 'name.reference.call':  
                 current_node = n
                 resolved_parts = []
-                current_obj = None
+                current_context_stack = []
 
-                # Decompose attribute chain with type resolution
+                # Decompose attribute chain
                 while current_node.type == 'attribute':
-                    attr_part = current_node.children[-1].text.decode('utf8')
+                    attr_part = current_node.children[2].text.decode('utf8')
                     resolved_parts.insert(0, attr_part)
                     current_node = current_node.children[0]
 
@@ -211,52 +211,55 @@ class RepoTreeGenerator:
                     base_part = current_node.text.decode('utf8')
                     resolved_parts.insert(0, base_part)
 
-                # Resolve variable types through local/instance variables
-                for i in range(len(resolved_parts)):
-                    part = resolved_parts[i]
-                    context = None
-
-                    # Check local variables first
-                    if i == 0 and part in local_vars:
-                        context = local_vars[part]
-                        resolved_parts[i] = context
-                        continue
-
-                    # Check instance variables if in class context
-                    if current_class and i == 0:
-                        class_info = self._current_classes.get(current_class, {})
-                        instance_vars = class_info.get("instance_vars", {})
-                        if part in instance_vars:
-                            context = instance_vars[part]
-                            resolved_parts[i] = context
-                            # If we have more parts, check if resolved class has the next attribute
-                            if len(resolved_parts) > i+1 and context:
-                                next_class_info = self._current_classes.get(context, {})
-                                next_instance_vars = next_class_info.get("instance_vars", {})
-                                next_part = resolved_parts[i+1]
-                                if next_part in next_instance_vars:
-                                    resolved_parts[i+1] = next_instance_vars[next_part]
-
-                # Handle self references and replace with actual class
-                if resolved_parts[0] == 'self':
+                # Handle self references
+                if resolved_parts and resolved_parts[0] == 'self':
                     resolved_parts = resolved_parts[1:]
                     if current_class:
-                        resolved_parts.insert(0, current_class)
+                        current_context_stack.append(current_class)
 
-                # Resolve chained attributes using class information
-                for i in range(len(resolved_parts)-1):
-                    current_part = resolved_parts[i]
-                    next_part = resolved_parts[i+1]
-                    
-                    # Check if current part is a known class
-                    class_info = self._current_classes.get(current_part, {})
-                    instance_vars = class_info.get("instance_vars", {})
-                    if next_part in instance_vars:
-                        resolved_parts[i+1] = instance_vars[next_part]
+                # Resolve each part sequentially
+                for i, part in enumerate(resolved_parts):
+                    if current_context_stack:
+                        current_context = current_context_stack[-1]
+                        class_info = self._current_classes.get(current_context, {})
+                        instance_vars = class_info.get("instance_vars", {})
+                        
+                        if part in instance_vars:
+                            # Replace variable with its type and update context
+                            resolved_part = instance_vars[part]
+                            resolved_parts[i] = resolved_part
+                            current_context_stack.append(resolved_part)
+                        else:
+                            # Check if part is a known class
+                            if part in self._current_classes:
+                                current_context_stack.append(part)
+                            else:
+                                # Check local variables if it's the first part
+                                if i == 0 and part in local_vars:
+                                    resolved_part = local_vars[part]
+                                    resolved_parts[i] = resolved_part
+                                    current_context_stack.append(resolved_part)
+                                else:
+                                    current_context_stack = []
+                    else:
+                        if part in self._current_classes:
+                            current_context_stack.append(part)
+                        elif i == 0 and part in local_vars:
+                            resolved_part = local_vars[part]
+                            resolved_parts[i] = resolved_part
+                            current_context_stack.append(resolved_part)
 
-                # Filter out None values and construct final call
-                final_call = '.'.join([p for p in resolved_parts if p])
-                if final_call and final_call != '__init__':
+                # Build final call from resolved context chain
+                if current_context_stack:
+                    # Find the deepest class context
+                    class_context = current_context_stack[-1]
+                    call_parts = [class_context] + resolved_parts[len(current_context_stack):]
+                    final_call = '.'.join(call_parts)
+                else:
+                    final_call = '.'.join(resolved_parts)
+
+                # Filter out invalid calls
+                if final_call and final_call != '__init__' and 'self.' not in final_call:
                     calls.append(final_call)
                     logger.debug(f"Resolved call: {final_call}")
 
