@@ -11,12 +11,12 @@ from tree_sitter import Node
 from .callstack import CallStackGenerator
 from .providers import get_provider
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
-handler = logging.StreamHandler()
-formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+# logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
+# handler = logging.StreamHandler()
+# formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+# handler.setFormatter(formatter)
+# logger.addHandler(handler)
 
 
 class RepoTreeGenerator:
@@ -261,7 +261,7 @@ class RepoTreeGenerator:
                 # Filter out invalid calls
                 if final_call and final_call != '__init__' and 'self.' not in final_call:
                     calls.append(final_call)
-                    logger.debug(f"Resolved call: {final_call}")
+                    # logger.debug(f"Resolved call: {final_call}")
 
         return list(set(calls))
 
@@ -320,7 +320,7 @@ class RepoTreeGenerator:
 
                         if class_name:
                             instance_vars[attr] = class_name
-                            logger.debug(f"Captured instance variable: {attr} = {class_name}")
+                            # logger.debug(f"Captured instance variable: {attr} = {class_name}")
 
                 # Handle local variable assignments (var = ClassName() or var = self.method())
                 elif target.type == 'identifier':
@@ -328,7 +328,7 @@ class RepoTreeGenerator:
                     class_name = self._get_rhs_type(value, current_class)
                     if class_name:
                         instance_vars[var_name] = class_name
-                        logger.debug(f"Captured local variable: {var_name} = {class_name}")
+                        # logger.debug(f"Captured local variable: {var_name} = {class_name}")
 
             stack.extend(reversed(current_node.children))
 
@@ -450,7 +450,8 @@ class RepoTreeGenerator:
                     ast_data = processor._parse_file_ast(content, lang)
                     return path, {"language": lang, "ast": ast_data}
         except Exception as e:
-            logger.error(f"Failed to process {path}: {str(e)}")
+            # logger.error(f"Failed to process {path}: {str(e)}")
+            pass
         return path, None
 
     def generate_repo_tree(
@@ -464,7 +465,7 @@ class RepoTreeGenerator:
         except ValueError as e:
             raise e
         except Exception as e:
-            logger.warning(f"Failed to get default branch: {str(e)}")
+            # logger.warning(f"Failed to get default branch: {str(e)}")
             ref = 'main'
 
         try:
@@ -529,7 +530,8 @@ class RepoTreeGenerator:
                                 "ast": ast_data,
                             }
                 except Exception as e:
-                    logger.error(f"Failed to process {path}: {str(e)}")
+                    # logger.error(f"Failed to process {path}: {str(e)}")
+                    pass
 
         return repo_tree
 
