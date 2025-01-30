@@ -159,19 +159,32 @@ class RepoTreeGenerator:
             # Process class definitions
             elif current_node.type == 'class_definition':
                 class_name = None
+                base_classes = []
                 body_node = None
 
-                # Find class name and body
+                # Extract class name and base classes
                 for child in current_node.children:
                     if child.type == 'identifier':
                         class_name = child.text.decode('utf8')
                     elif child.type == 'block':
                         body_node = child
+                    elif child.type == 'argument_list':
+                        # Get base classes for Python
+                        base_class_nodes = [
+                            n for n in child.children 
+                            if n.type not in (',', '(', ')')
+                        ]
+                        base_classes = [
+                            n.text.decode('utf8') 
+                            for n in base_class_nodes
+                        ]
 
                 if class_name and body_node:
-                    self._current_classes.setdefault(
-                        class_name, {"instance_vars": {}, "methods": []}
-                    )
+                    self._current_classes.setdefault(class_name, {
+                        "instance_vars": {},
+                        "methods": [],
+                        "base_classes": base_classes
+                    })
                     # Add class body children to stack with class context
                     for child in reversed(body_node.children):
                         stack.append((child, class_name))
@@ -254,7 +267,15 @@ class RepoTreeGenerator:
                     # Find the deepest class context
                     class_context = current_context_stack[-1]
                     call_parts = [class_context] + resolved_parts[len(current_context_stack):]
+                    
+                    # Handle instance method calls
                     final_call = '.'.join(call_parts)
+                    
+                    # Handle calls on variables with class types
+                    if len(current_context_stack) > 1 and i == 0 and part in local_vars:
+                        var_type = local_vars[part]
+                        call_parts = [var_type] + resolved_parts
+                        final_call = '.'.join(call_parts)
                 else:
                     final_call = '.'.join(resolved_parts)
 
