@@ -116,10 +116,22 @@ class RepoTreeGenerator:
                     # Extract return type for Python
                     if lang == 'python' and current_class:
                         return_type = None
-                        for child in current_node.children:
-                            if child.type == 'type':
-                                return_type = child.text.decode('utf8')
-                                break
+                        return_type_node = next(
+                            (c for c in current_node.children if c.type == 'return_type'),
+                            None
+                        )
+                        if return_type_node:
+                            # Get first meaningful type node (supports identifiers, subscriptions, etc.)
+                            type_node = next(
+                                (c for c in return_type_node.children 
+                                 if c.type in ('identifier', 'subscript', 'attribute', 'type', 'string')),
+                                None
+                            )
+                            if type_node:
+                                return_type = type_node.text.decode('utf8')
+                                # Strip quotes from string-based forward references
+                                if type_node.type == 'string':
+                                    return_type = return_type.strip("'\"")
                         if return_type:
                             self.method_return_types.setdefault(current_class, {})[func_name] = return_type
 
@@ -244,18 +256,26 @@ class RepoTreeGenerator:
                             class_name = None
                             if value.type == 'call':
                                 fn_node = value.children[0]
-                                if fn_node.type == 'attribute':
-                                    obj_node = fn_node.children[0]
-                                    if obj_node.type == 'identifier' and obj_node.text.decode() == 'self':
-                                        method_name = fn_node.children[2].text.decode()
-                                        class_name = self.method_return_types.get(current_class, {}).get(method_name)
-                                        if class_name:
-                                            instance_vars[attr] = class_name
-                                            return
-                                elif fn_node.type == 'identifier':
-                                    class_name = fn_node.text.decode()
-                            elif value.type == 'identifier':
-                                class_name = value.text.decode()
+                        
+                                # Handle nested method calls (e.g. self.a().b())
+                                while fn_node.type == 'attribute':
+                                    fn_node = fn_node.children[0]
+                        
+                                if fn_node.type == 'identifier':
+                                    # Check if this is a method call
+                                    method_name = fn_node.text.decode()
+                                    class_name = self.method_return_types.get(
+                                        current_class, {}
+                                    ).get(method_name)
+                    
+                            # Handle direct constructor calls as fallback
+                            if not class_name and value.type == 'call':
+                                first_child = value.children[0]
+                                if first_child.type == 'identifier':
+                                    class_name = first_child.text.decode()
+                    
+                            if class_name:
+                                instance_vars[attr] = class_name
                             
                             if class_name:
                                 instance_vars[attr] = class_name

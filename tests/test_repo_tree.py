@@ -497,6 +497,75 @@ def test_generate_repo_tree_with_nested_methods(
     assert "method_one" in method_two["calls"]
 
 
+def test_method_return_type_resolution(repo_tree_generator, mock_gitlab):
+    """Test instance variable type resolution from method return types."""
+    python_content = """
+class Processor:
+    def get_processor(self) -> 'Processor':
+        return Processor()
+
+class DataHandler:
+    def __init__(self):
+        self.processor = self.get_processor()
+    
+    def get_processor(self) -> Processor:
+        return Processor()
+    
+    def run(self):
+        self.processor.process()
+    """
+
+    # Setup mock project and file content
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
+    
+    file_data = repo_tree['files']['src/main.py']
+    ast_data = file_data['ast']
+    
+    # Verify method return types
+    assert repo_tree_generator.method_return_types['DataHandler']['get_processor'] == 'Processor'
+    
+    # Verify instance variable type
+    data_handler_class = ast_data['classes']['DataHandler']
+    assert data_handler_class['instance_vars']['processor'] == 'Processor'
+    
+    # Verify method call resolution
+    run_method = ast_data['functions']['DataHandler.run']
+    assert 'Processor.process' in run_method['calls']
+
+
+def test_forward_reference_resolution(repo_tree_generator, mock_gitlab):
+    """Test resolution of forward-referenced return types."""
+    python_content = """
+class Environment:
+    def globals_update(self):
+        pass
+
+class Flask:
+    def create_jinja_environment(self) -> 'Environment':
+        rv = self.jinja_environment()
+        rv.globals_update()
+        return rv
+
+    def jinja_environment(self) -> Environment:
+        return Environment()
+    """
+
+    # Setup mock project and file content
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
+    
+    file_data = repo_tree['files']['src/main.py']
+    ast_data = file_data['ast']
+    
+    # Verify method return types
+    assert repo_tree_generator.method_return_types['Flask']['jinja_environment'] == 'Environment'
+    assert repo_tree_generator.method_return_types['Flask']['create_jinja_environment'] == 'Environment'
+    
+    # Verify instance variable type resolution
+    create_method = ast_data['functions']['Flask.create_jinja_environment']
+    assert 'Environment.globals_update' in create_method['calls']
+
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
     # Create test data
