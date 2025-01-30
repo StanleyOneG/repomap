@@ -56,11 +56,18 @@ class DataProcessor:
     def __init__(self):
         self.data = None
 
+    def get_processor(self) -> 'DataProcessor':
+        return DataProcessor()
+
     def process(self):
         self.validate_data()
         result = self.transform_data()
         self.save_result(result)
         outer_function()
+        
+        # Test method return type resolution
+        other = self.get_processor()
+        other.validate_data()
 
     def validate_data(self):
         validate(self.data)
@@ -265,6 +272,10 @@ def test_generate_repo_tree_python(
     assert "DataProcessor.transform_data" in process_method["calls"]
     assert "DataProcessor.save_result" in process_method["calls"]
     assert "outer_function" in process_method["calls"]
+    
+    # Verify method return type resolution
+    assert "DataProcessor.get_processor" in functions
+    assert "DataProcessor.validate_data" in process_method["calls"]  # From other.validate_data()
 
     validate_data_method = functions["DataProcessor.validate_data"]
     assert "validate" in validate_data_method["calls"]

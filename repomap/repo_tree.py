@@ -31,6 +31,7 @@ class RepoTreeGenerator:
         self.queries = self.call_stack_gen.queries
         self.provider = None
         self._current_classes = {}
+        self.method_return_types = {}  # Track method return types for variable resolution
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -112,9 +113,19 @@ class RepoTreeGenerator:
                         "calls": list(set(calls)),
                     }
 
+                    # Extract return type for Python
+                    if lang == 'python' and current_class:
+                        return_type = None
+                        for child in current_node.children:
+                            if child.type == 'type':
+                                return_type = child.text.decode('utf8')
+                                break
+                        if return_type:
+                            self.method_return_types.setdefault(current_class, {})[func_name] = return_type
+
                     # Process __init__ for instance variables
                     if current_class and func_name == "__init__" and body_node:
-                        instance_vars = self._find_instance_vars(body_node, lang)
+                        instance_vars = self._find_instance_vars(body_node, current_class)
                         self._current_classes.setdefault(
                             current_class, {"instance_vars": {}}
                         )
@@ -209,13 +220,12 @@ class RepoTreeGenerator:
 
         return list(set(calls))
 
-    def _find_instance_vars(self, node: Node, lang: str) -> Dict[str, str]:
+    def _find_instance_vars(self, node: Node, current_class: str) -> Dict[str, str]:
         instance_vars = {}
         stack = [node]
 
         def process_assignment(assignment_node: Node):
             if assignment_node.type in ['assignment', 'augmented_assignment']:
-                # Handle different assignment patterns
                 if assignment_node.child_count >= 3:
                     target = assignment_node.children[0]
                     value = assignment_node.children[-1]
@@ -233,12 +243,18 @@ class RepoTreeGenerator:
                             # Get class name from RHS
                             class_name = None
                             if value.type == 'call':
-                                # Handle constructor calls (MyClass())
                                 fn_node = value.children[0]
-                                if fn_node.type == 'identifier':
+                                if fn_node.type == 'attribute':
+                                    obj_node = fn_node.children[0]
+                                    if obj_node.type == 'identifier' and obj_node.text.decode() == 'self':
+                                        method_name = fn_node.children[2].text.decode()
+                                        class_name = self.method_return_types.get(current_class, {}).get(method_name)
+                                        if class_name:
+                                            instance_vars[attr] = class_name
+                                            return
+                                elif fn_node.type == 'identifier':
                                     class_name = fn_node.text.decode()
                             elif value.type == 'identifier':
-                                # Handle direct class assignments
                                 class_name = value.text.decode()
                             
                             if class_name:
