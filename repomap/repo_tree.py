@@ -197,67 +197,60 @@ class RepoTreeGenerator:
         
         for n, tag in captures:  
             if tag == 'name.reference.call':  
-                call_parts = []  
-                current_node = n  
-                skip_self = False  
-                
-                if current_node.type == 'attribute':  
-                    parts = []  
-                    current = current_node  
-                    while current.type == 'attribute':  
-                        if len(current.children) >= 3:  
-                            parts.insert(0, current.children[2].text.decode('utf8'))  
-                        current = current.children[0]  
-                    if current.type == 'identifier':  
-                        parts.insert(0, current.text.decode('utf8'))  
-                    call_parts = parts  
-                else:  
-                    call_parts = [current_node.text.decode('utf8')]  
-    
-                if call_parts and call_parts[0] == 'self':  
-                    call_parts = call_parts[1:]  
-                    skip_self = True  
-    
-                resolved = []  
-                if current_class and call_parts:  
-                    class_info = self._current_classes.get(current_class, {})  
-                    instance_vars = class_info.get("instance_vars", {})  
-                    class_methods = class_info.get("methods", [])  
-                    found_var = False  
-                    
-                    for part in call_parts:  
-                        if part in local_vars and not found_var:  
-                            resolved.extend(local_vars[part].split('.'))  
-                            found_var = True  
-                            logger.debug(f"Resolved variable '{part}' to '{local_vars[part]}'")  
-                        elif part in instance_vars and not found_var:  
-                            resolved.extend(instance_vars[part].split('.'))  
-                            found_var = True  
-                            logger.debug(f"Resolved instance variable '{part}' to '{instance_vars[part]}'")  
-                        else:  
-                            resolved.append(part)  
-                    
-                    if skip_self and not found_var:  
-                        if call_parts[0] in class_methods:  
-                            resolved.insert(0, current_class)  
-                            found_var = True  
-                            logger.debug(f"Resolved method call on self: '{current_class}.{call_parts[0]}'")  
-                        else:  
-                            resolved.insert(0, current_class)  
-                            logger.debug(f"Resolved call on self to class: '{current_class}'")  
-    
-                if resolved:  
-                    final_call = '.'.join(resolved)  
-                    if final_call != '__init__':  
-                        calls.append(final_call)  
-                        logger.debug(f"Added resolved call: {final_call}")  
-                elif not resolved and call_parts:  
-                    final_call = '.'.join(call_parts)  
-                    if final_call != '__init__':  
-                        calls.append(final_call)  
-                        logger.debug(f"Added unresolved call: {final_call}")  
-    
-        return list(set(calls))  
+                current_node = n
+                resolved_parts = []
+                current_obj = None
+
+                # Decompose attribute chain
+                while current_node.type == 'attribute':
+                    attr_part = current_node.children[-1].text.decode('utf8')
+                    resolved_parts.insert(0, attr_part)
+                    current_node = current_node.children[0]
+
+                if current_node.type == 'identifier':
+                    base_part = current_node.text.decode('utf8')
+                    resolved_parts.insert(0, base_part)
+
+                # Resolve variable types through local/instance variables
+                for i in range(len(resolved_parts)):
+                    part = resolved_parts[i]
+                    context = None
+
+                    # Check local variables first
+                    if i == 0 and part in local_vars:
+                        context = local_vars[part]
+                        resolved_parts[i] = context
+                        continue
+
+                    # Check instance variables if we're in a class context
+                    if current_class and i == 0:
+                        class_info = self._current_classes.get(current_class, {})
+                        instance_vars = class_info.get("instance_vars", {})
+                        if part in instance_vars:
+                            context = instance_vars[part]
+                            resolved_parts[i] = context
+
+                    # If we have context from previous resolution, check its properties
+                    if context and i+1 < len(resolved_parts):
+                        class_info = self._current_classes.get(context, {})
+                        instance_vars = class_info.get("instance_vars", {})
+                        if resolved_parts[i+1] in instance_vars:
+                            context = instance_vars[resolved_parts[i+1]]
+                            resolved_parts[i+1] = context
+
+                # Handle self references and static calls
+                if resolved_parts[0] == 'self':
+                    resolved_parts = resolved_parts[1:]
+                    if current_class:
+                        resolved_parts.insert(0, current_class)
+
+                # Skip __init__ calls and empty results
+                final_call = '.'.join(resolved_parts)
+                if final_call and final_call != '__init__':
+                    calls.append(final_call)
+                    logger.debug(f"Resolved call: {final_call}")
+
+        return list(set(calls))
 
     def find_node_by_range(self, node: Node, start_line: int, end_line: int) -> Optional[Node]:
         """Recursively find a node by its start and end lines.

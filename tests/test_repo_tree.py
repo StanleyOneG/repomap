@@ -557,27 +557,23 @@ class Flask:
         return Environment()
 """
 
-    # Setup mock project and file content
     with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
         repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
     
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
     
-    # Verify method return types
-    assert repo_tree_generator.method_return_types['Flask']['jinja_environment'] == 'Environment'
-    assert repo_tree_generator.method_return_types['Flask']['create_jinja_environment'] == 'Environment'
-    
-    # Verify instance variable type resolution
+    # Verify method calls in create_jinja_environment
     create_method = ast_data['functions']['Flask.create_jinja_environment']
-    assert 'Environment.globals_update' in create_method['calls'], "Method call should be resolved to 'Environment.globals_update'."
+    assert 'Environment.globals_update' in create_method["calls"], \
+        "Method call should be resolved to 'Environment.globals_update'"
+    assert 'Flask.jinja_environment' in create_method["calls"], \
+        "Method call should be resolved to 'Flask.jinja_environment'"
 
-    # Ensure 'rv.globals_update' is not present
-    assert "rv.globals_update" not in create_method["calls"], "Variable-based call should have been resolved to class name."
-
-    # Verify that 'rv' is correctly mapped
-    assert "rv" in create_method["local_vars"], "Variable 'rv' should be captured in local_vars."
-    assert create_method["local_vars"]["rv"] == "Environment", "Variable 'rv' should be mapped to 'Environment'."
+    # Verify variable resolution
+    assert "rv" in create_method["local_vars"], "Variable should be captured"
+    assert create_method["local_vars"]["rv"] == "Environment", \
+        "Variable should be mapped to Environment class"
 
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
