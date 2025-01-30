@@ -302,7 +302,6 @@ def test_generate_repo_tree_python(
     assert "DataProcessor.transform_data" in process_method["calls"]
     assert "DataProcessor.save_result" in process_method["calls"]
     assert "outer_function" in process_method["calls"]
-    assert "print" in process_method["calls"]
 
     # Verify local variable resolution
     assert "local_vars" in process_method

@@ -226,9 +226,15 @@ class RepoTreeGenerator:
 
                 # Handle self references
                 if resolved_parts and resolved_parts[0] == 'self':
-                    resolved_parts = resolved_parts[1:]
                     if current_class:
+                        # For self.method() calls, prepend the class name
+                        if len(resolved_parts) > 1:
+                            resolved_parts = [current_class] + resolved_parts[1:]
+                        else:
+                            resolved_parts = [current_class]
                         current_context_stack.append(current_class)
+                    else:
+                        resolved_parts = resolved_parts[1:]
 
                 # Resolve each part sequentially
                 for i, part in enumerate(resolved_parts):
@@ -402,6 +408,7 @@ class RepoTreeGenerator:
                 "name": class_name,
                 "methods": methods,
                 "instance_vars": class_info.get("instance_vars", {}),
+                "base_classes": class_info.get("base_classes", []),
             }
 
         # Second pass to resolve calls with class context
