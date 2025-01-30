@@ -12,6 +12,11 @@ from .callstack import CallStackGenerator
 from .providers import get_provider
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+handler = logging.StreamHandler()
+formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+handler.setFormatter(formatter)
+logger.addHandler(handler)
 
 
 class RepoTreeGenerator:
@@ -111,6 +116,7 @@ class RepoTreeGenerator:
                         "end_line": current_node.end_point[0],
                         "class": current_class,
                         "calls": list(set(calls)),
+                        "local_vars": {},  # Initialize local_vars
                     }
 
                     # Extract return type for Python
@@ -145,6 +151,11 @@ class RepoTreeGenerator:
                             instance_vars
                         )
 
+                    # Capture local variable types for the function
+                    if body_node:
+                        local_vars = self._find_instance_vars(body_node, current_class)
+                        functions[func_key]["local_vars"] = local_vars
+
             # Process class definitions
             elif current_node.type == 'class_definition':
                 class_name = None
@@ -170,119 +181,164 @@ class RepoTreeGenerator:
                 for child in reversed(current_node.children):
                     stack.append((child, current_class))
 
-    def _find_function_calls(self, node: Node, lang: str, current_class: Optional[str] = None) -> List[str]:
-        if lang not in self.queries:
-            return []
+    def _find_function_calls(  
+        self,  
+        node: Node,  
+        lang: str,  
+        current_class: Optional[str] = None,  
+        local_vars: Dict[str, str] = {},  
+    ) -> List[str]:  
+        if lang not in self.queries:  
+            return []  
         
-        calls = []
-        query = self.queries[lang]
-        captures = query.captures(node)
+        calls = []  
+        query = self.queries[lang]  
+        captures = query.captures(node)  
         
-        for n, tag in captures:
-            if tag == 'name.reference.call':
-                call_parts = []
-                current_node = n
-                skip_self = False
+        for n, tag in captures:  
+            if tag == 'name.reference.call':  
+                call_parts = []  
+                current_node = n  
+                skip_self = False  
                 
-                if current_node.type == 'attribute':
-                    parts = []
-                    current = current_node
-                    while current.type == 'attribute':
-                        parts.insert(0, current.children[2].text.decode('utf8'))
-                        current = current.children[0]
-                    if current.type == 'identifier':
-                        parts.insert(0, current.text.decode('utf8'))
-                    call_parts = parts
-                else:
-                    call_parts = [current_node.text.decode('utf8')]
-
-                if call_parts and call_parts[0] == 'self':
-                    call_parts = call_parts[1:]
-                    skip_self = True
-
-                resolved = []
-                if current_class and call_parts:
-                    class_info = self._current_classes.get(current_class, {})
-                    instance_vars = class_info.get("instance_vars", {})
-                    class_methods = class_info.get("methods", [])
-                    found_var = False
+                if current_node.type == 'attribute':  
+                    parts = []  
+                    current = current_node  
+                    while current.type == 'attribute':  
+                        if len(current.children) >= 3:  
+                            parts.insert(0, current.children[2].text.decode('utf8'))  
+                        current = current.children[0]  
+                    if current.type == 'identifier':  
+                        parts.insert(0, current.text.decode('utf8'))  
+                    call_parts = parts  
+                else:  
+                    call_parts = [current_node.text.decode('utf8')]  
+    
+                if call_parts and call_parts[0] == 'self':  
+                    call_parts = call_parts[1:]  
+                    skip_self = True  
+    
+                resolved = []  
+                if current_class and call_parts:  
+                    class_info = self._current_classes.get(current_class, {})  
+                    instance_vars = class_info.get("instance_vars", {})  
+                    class_methods = class_info.get("methods", [])  
+                    found_var = False  
                     
-                    for part in call_parts:
-                        if part in instance_vars and not found_var:
-                            resolved.extend(instance_vars[part].split('.'))
-                            found_var = True
-                        else:
-                            resolved.append(part)
+                    for part in call_parts:  
+                        if part in local_vars and not found_var:  
+                            resolved.extend(local_vars[part].split('.'))  
+                            found_var = True  
+                            logger.debug(f"Resolved variable '{part}' to '{local_vars[part]}'")  
+                        elif part in instance_vars and not found_var:  
+                            resolved.extend(instance_vars[part].split('.'))  
+                            found_var = True  
+                            logger.debug(f"Resolved instance variable '{part}' to '{instance_vars[part]}'")  
+                        else:  
+                            resolved.append(part)  
                     
-                    if skip_self and not found_var:
-                        if call_parts[0] in class_methods:
-                            resolved.insert(0, current_class)
-                            found_var = True
-                        else:
-                            resolved.insert(0, current_class)
-
-                if resolved:
-                    final_call = '.'.join(resolved)
-                    if final_call != '__init__':
-                        calls.append(final_call)
-                elif not resolved and call_parts:
-                    final_call = '.'.join(call_parts)
-                    if final_call != '__init__':
-                        calls.append(final_call)
-
-        return list(set(calls))
+                    if skip_self and not found_var:  
+                        if call_parts[0] in class_methods:  
+                            resolved.insert(0, current_class)  
+                            found_var = True  
+                            logger.debug(f"Resolved method call on self: '{current_class}.{call_parts[0]}'")  
+                        else:  
+                            resolved.insert(0, current_class)  
+                            logger.debug(f"Resolved call on self to class: '{current_class}'")  
+    
+                if resolved:  
+                    final_call = '.'.join(resolved)  
+                    if final_call != '__init__':  
+                        calls.append(final_call)  
+                        logger.debug(f"Added resolved call: {final_call}")  
+                elif not resolved and call_parts:  
+                    final_call = '.'.join(call_parts)  
+                    if final_call != '__init__':  
+                        calls.append(final_call)  
+                        logger.debug(f"Added unresolved call: {final_call}")  
+    
+        return list(set(calls))  
 
     def _find_instance_vars(self, node: Node, current_class: str) -> Dict[str, str]:
+        """Track instance variables and local variables within a class.
+        
+        Args:
+            node (Node): The AST node to process.
+            current_class (str): The name of the current class.
+
+        Returns:
+            Dict[str, str]: A mapping of variable names to their resolved class types.
+        """
         instance_vars = {}
         stack = [node]
 
-        def process_assignment(assignment_node: Node):
-            if assignment_node.type in ['assignment', 'augmented_assignment']:
-                if assignment_node.child_count >= 3:
-                    target = assignment_node.children[0]
-                    value = assignment_node.children[-1]
-
-                    # Handle attribute assignments (self.xxx = ...)
-                    if target.type == 'attribute':
-                        attr_parts = []
-                        current = target
-                        while current.type == 'attribute':
-                            attr_parts.insert(0, current.children[2].text.decode())
-                            current = current.children[0]
-                        if current.type == 'identifier' and current.text.decode() == 'self':
-                            attr = '.'.join(attr_parts)
-                            
-                            # Get class name from RHS
-                            class_name = None
-                            if value.type == 'call':
-                                fn_node = value.children[0]
-                        
-                                # Handle nested method calls (e.g. self.a().b())
-                                while fn_node.type == 'attribute':
-                                    fn_node = fn_node.children[0]
-                        
-                                if fn_node.type == 'identifier':
-                                    # Check if this is a method call
-                                    method_name = fn_node.text.decode()
-                                    class_name = self.method_return_types.get(
-                                        current_class, {}
-                                    ).get(method_name)
-                    
-                            # Handle direct constructor calls as fallback
-                            if not class_name and value.type == 'call':
-                                first_child = value.children[0]
-                                if first_child.type == 'identifier':
-                                    class_name = first_child.text.decode()
-                    
-                            if class_name:
-                                instance_vars[attr] = class_name
-                            
-                            if class_name:
-                                instance_vars[attr] = class_name
-
         while stack:
             current_node = stack.pop()
-            process_assignment(current_node)
+
+            # Handle assignments
+            if current_node.type in ['assignment', 'augmented_assignment']:
+                target = current_node.children[0]
+                value = current_node.children[-1]
+
+                # Handle instance variable assignments (self.var = ClassName() or self.var = self.method())
+                if target.type == 'attribute':
+                    attr_parts = []
+                    current = target
+                    while current.type == 'attribute':
+                        attr_parts.insert(0, current.children[2].text.decode())
+                        current = current.children[0]
+                    if current.type == 'identifier' and current.text.decode() == 'self':
+                        attr = '.'.join(attr_parts)
+
+                        # Get class name from RHS
+                        class_name = None
+                        if value.type == 'call':
+                            fn_node = value.children[0]
+
+                            # Handle nested method calls (e.g., self.a().b())
+                            while fn_node.type == 'attribute':
+                                fn_node = fn_node.children[0]
+
+                            if fn_node.type == 'identifier':
+                                method_name = fn_node.text.decode()
+                                class_name = self.method_return_types.get(
+                                    current_class, {}
+                                ).get(method_name)
+
+                        # Handle direct constructor calls as fallback
+                        if not class_name and value.type == 'call':
+                            first_child = value.children[0]
+                            if first_child.type == 'identifier':
+                                method_name = first_child.text.decode()
+                                if method_name[0].isupper():  # Heuristic for class constructors
+                                    class_name = method_name
+
+                        if class_name:
+                            instance_vars[attr] = class_name
+                            logger.debug(f"Captured instance variable: {attr} = {class_name}")
+
+                # Handle local variable assignments (var = ClassName() or var = self.method())
+                elif target.type == 'identifier':
+                    var_name = target.text.decode()
+                    if value.type == 'call':
+                        fn_node = value.children[0]
+                        method_name = ""
+                        if fn_node.type == 'identifier':
+                            method_name = fn_node.text.decode()
+                        elif fn_node.type == 'attribute':
+                            # Extract the method name from attribute (e.g., self.method -> method)
+                            if len(fn_node.children) >= 3:
+                                method_name = fn_node.children[2].text.decode()
+
+                        if method_name:
+                            class_name = self.method_return_types.get(current_class, {}).get(method_name)
+                            if class_name:
+                                instance_vars[var_name] = class_name
+                                logger.debug(f"Captured local variable: {var_name} = {class_name}")
+                            elif method_name[0].isupper():  # Heuristic for class constructors
+                                instance_vars[var_name] = method_name
+                                logger.debug(f"Captured local variable (constructor heuristic): {var_name} = {method_name}")
+
             stack.extend(reversed(current_node.children))
 
         return instance_vars
@@ -322,9 +378,10 @@ class RepoTreeGenerator:
                  and n.end_point[0] == func_data["end_line"]),
                 None
             )
-            
+        
             if func_node:
-                resolved_calls = self._find_function_calls(func_node, lang, current_class)
+                local_vars = func_data.get("local_vars", {})
+                resolved_calls = self._find_function_calls(func_node, lang, current_class, local_vars)
                 func_data["calls"] = list(set(resolved_calls))
 
         # Collect all calls

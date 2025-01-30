@@ -304,6 +304,12 @@ def test_generate_repo_tree_python(
     assert "outer_function" in process_method["calls"]
     assert "print" in process_method["calls"]
 
+    # Verify local variable resolution
+    assert "local_vars" in process_method
+    assert "other" in process_method["local_vars"]
+    assert process_method["local_vars"]["other"] == "DataProcessor"
+    assert "DataProcessor.validate_data" in process_method["calls"]
+
     validate_data_method = functions["DataProcessor.validate_data"]
     assert validate_data_method["class"] == "DataProcessor"
     assert "validate" in validate_data_method["calls"]
