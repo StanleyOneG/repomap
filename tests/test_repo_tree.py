@@ -575,6 +575,45 @@ class Flask:
     assert create_method["local_vars"]["rv"] == "Environment", \
         "Variable should be mapped to Environment class"
 
+def test_instance_variable_call_resolution(repo_tree_generator, mock_gitlab):
+    """Test method calls through instance variables resolve correctly."""
+    python_content = """
+class DataProcessor:
+    def __init__(self):
+        self.validator = DataValidator()
+    
+    def process(self):
+        self.validator.validate()
+
+class DataValidator:
+    def validate(self):
+        self._internal_validate()
+    
+    def _internal_validate(self):
+        print("Validating")
+"""
+
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
+    
+    file_data = repo_tree['files']['src/main.py']
+    ast_data = file_data['ast']
+    
+    # Verify DataProcessor.process calls
+    process_method = ast_data['functions']['DataProcessor.process']
+    assert 'DataValidator.validate' in process_method['calls'], \
+        "Should resolve self.validator.validate() to DataValidator.validate"
+    
+    # Verify DataValidator.validate calls
+    validate_method = ast_data['functions']['DataValidator.validate']
+    assert 'DataValidator._internal_validate' in validate_method['calls'], \
+        "Should resolve self._internal_validate() to DataValidator._internal_validate"
+    
+    # Verify instance variable type
+    data_processor_class = ast_data['classes']['DataProcessor']
+    assert data_processor_class['instance_vars']['validator'] == 'DataValidator', \
+        "Should detect self.validator type as DataValidator"
+
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
     # Create test data

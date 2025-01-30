@@ -201,7 +201,7 @@ class RepoTreeGenerator:
                 resolved_parts = []
                 current_obj = None
 
-                # Decompose attribute chain
+                # Decompose attribute chain with type resolution
                 while current_node.type == 'attribute':
                     attr_part = current_node.children[-1].text.decode('utf8')
                     resolved_parts.insert(0, attr_part)
@@ -222,30 +222,40 @@ class RepoTreeGenerator:
                         resolved_parts[i] = context
                         continue
 
-                    # Check instance variables if we're in a class context
+                    # Check instance variables if in class context
                     if current_class and i == 0:
                         class_info = self._current_classes.get(current_class, {})
                         instance_vars = class_info.get("instance_vars", {})
                         if part in instance_vars:
                             context = instance_vars[part]
                             resolved_parts[i] = context
+                            # If we have more parts, check if resolved class has the next attribute
+                            if len(resolved_parts) > i+1 and context:
+                                next_class_info = self._current_classes.get(context, {})
+                                next_instance_vars = next_class_info.get("instance_vars", {})
+                                next_part = resolved_parts[i+1]
+                                if next_part in next_instance_vars:
+                                    resolved_parts[i+1] = next_instance_vars[next_part]
 
-                    # If we have context from previous resolution, check its properties
-                    if context and i+1 < len(resolved_parts):
-                        class_info = self._current_classes.get(context, {})
-                        instance_vars = class_info.get("instance_vars", {})
-                        if resolved_parts[i+1] in instance_vars:
-                            context = instance_vars[resolved_parts[i+1]]
-                            resolved_parts[i+1] = context
-
-                # Handle self references and static calls
+                # Handle self references and replace with actual class
                 if resolved_parts[0] == 'self':
                     resolved_parts = resolved_parts[1:]
                     if current_class:
                         resolved_parts.insert(0, current_class)
 
-                # Skip __init__ calls and empty results
-                final_call = '.'.join(resolved_parts)
+                # Resolve chained attributes using class information
+                for i in range(len(resolved_parts)-1):
+                    current_part = resolved_parts[i]
+                    next_part = resolved_parts[i+1]
+                    
+                    # Check if current part is a known class
+                    class_info = self._current_classes.get(current_part, {})
+                    instance_vars = class_info.get("instance_vars", {})
+                    if next_part in instance_vars:
+                        resolved_parts[i+1] = instance_vars[next_part]
+
+                # Filter out None values and construct final call
+                final_call = '.'.join([p for p in resolved_parts if p])
                 if final_call and final_call != '__init__':
                     calls.append(final_call)
                     logger.debug(f"Resolved call: {final_call}")
@@ -303,27 +313,7 @@ class RepoTreeGenerator:
                         attr = '.'.join(attr_parts)
 
                         # Get class name from RHS
-                        class_name = None
-                        if value.type == 'call':
-                            fn_node = value.children[0]
-
-                            if fn_node.type == 'attribute':
-                                # Extract the method name from attribute (e.g., self.jinja_environment)
-                                method_name = fn_node.children[-1].text.decode('utf8')
-                                class_name = self.method_return_types.get(current_class, {}).get(method_name)
-                            elif fn_node.type == 'identifier':
-                                # Direct constructor call (e.g., self.var = ClassName())
-                                method_name = fn_node.text.decode('utf8')
-                                if method_name[0].isupper():  # Heuristic for class constructors
-                                    class_name = method_name
-
-                        # Handle direct constructor calls as fallback
-                        if not class_name and value.type == 'call':
-                            first_child = value.children[0]
-                            if first_child.type == 'identifier':
-                                method_name = first_child.text.decode()
-                                if method_name[0].isupper():  # Heuristic for class constructors
-                                    class_name = method_name
+                        class_name = self._get_rhs_type(value, current_class)
 
                         if class_name:
                             instance_vars[attr] = class_name
@@ -332,28 +322,40 @@ class RepoTreeGenerator:
                 # Handle local variable assignments (var = ClassName() or var = self.method())
                 elif target.type == 'identifier':
                     var_name = target.text.decode()
-                    if value.type == 'call':
-                        fn_node = value.children[0]
-                        method_name = ""
-                        if fn_node.type == 'identifier':
-                            method_name = fn_node.text.decode()
-                        elif fn_node.type == 'attribute':
-                            # Extract the method name from attribute (e.g., self.method -> method)
-                            if len(fn_node.children) >= 3:
-                                method_name = fn_node.children[2].text.decode()
-
-                        if method_name:
-                            class_name = self.method_return_types.get(current_class, {}).get(method_name)
-                            if class_name:
-                                instance_vars[var_name] = class_name
-                                logger.debug(f"Captured local variable: {var_name} = {class_name}")
-                            elif method_name[0].isupper():  # Heuristic for class constructors
-                                instance_vars[var_name] = method_name
-                                logger.debug(f"Captured local variable (constructor heuristic): {var_name} = {method_name}")
+                    class_name = self._get_rhs_type(value, current_class)
+                    if class_name:
+                        instance_vars[var_name] = class_name
+                        logger.debug(f"Captured local variable: {var_name} = {class_name}")
 
             stack.extend(reversed(current_node.children))
 
         return instance_vars
+
+    def _get_rhs_type(self, value_node: Node, current_class: str) -> Optional[str]:
+        """Determine the type of the right-hand side of an assignment."""
+        # Handle constructor calls (ClassName())
+        if value_node.type == 'call' and value_node.children[0].type == 'identifier':
+            class_name = value_node.children[0].text.decode()
+            if class_name[0].isupper():
+                return class_name
+        
+        # Handle method calls (self.method())
+        if value_node.type == 'call' and value_node.children[0].type == 'attribute':
+            method_name = value_node.children[0].children[-1].text.decode()
+            return self.method_return_types.get(current_class, {}).get(method_name)
+        
+        # Handle attribute access (self.some_attribute)
+        if value_node.type == 'attribute':
+            attr_parts = []
+            current = value_node
+            while current.type == 'attribute':
+                attr_parts.insert(0, current.children[2].text.decode())
+                current = current.children[0]
+            if current.text.decode() == 'self':
+                attr = '.'.join(attr_parts)
+                return self._current_classes.get(current_class, {}).get('instance_vars', {}).get(attr)
+        
+        return None
 
     def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:
         parser = self.parsers[lang]
