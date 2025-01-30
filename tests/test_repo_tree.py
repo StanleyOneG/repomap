@@ -555,7 +555,7 @@ class Flask:
 
     def jinja_environment(self) -> Environment:
         return Environment()
-    """
+"""
 
     # Setup mock project and file content
     with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
@@ -570,7 +570,14 @@ class Flask:
     
     # Verify instance variable type resolution
     create_method = ast_data['functions']['Flask.create_jinja_environment']
-    assert 'Environment.globals_update' in create_method['calls']
+    assert 'Environment.globals_update' in create_method['calls'], "Method call should be resolved to 'Environment.globals_update'."
+
+    # Ensure 'rv.globals_update' is not present
+    assert "rv.globals_update" not in create_method["calls"], "Variable-based call should have been resolved to class name."
+
+    # Verify that 'rv' is correctly mapped
+    assert "rv" in create_method["local_vars"], "Variable 'rv' should be captured in local_vars."
+    assert create_method["local_vars"]["rv"] == "Environment", "Variable 'rv' should be mapped to 'Environment'."
 
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""

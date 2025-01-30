@@ -259,6 +259,25 @@ class RepoTreeGenerator:
     
         return list(set(calls))  
 
+    def find_node_by_range(self, node: Node, start_line: int, end_line: int) -> Optional[Node]:
+        """Recursively find a node by its start and end lines.
+        
+        Args:
+            node (Node): Current AST node.
+            start_line (int): Starting line number.
+            end_line (int): Ending line number.
+        
+        Returns:
+            Optional[Node]: The node matching the specified line range or None.
+        """
+        if node.start_point[0] == start_line and node.end_point[0] == end_line:
+            return node
+        for child in node.children:
+            result = self.find_node_by_range(child, start_line, end_line)
+            if result:
+                return result
+        return None
+
     def _find_instance_vars(self, node: Node, current_class: str) -> Dict[str, str]:
         """Track instance variables and local variables within a class.
         
@@ -295,15 +314,15 @@ class RepoTreeGenerator:
                         if value.type == 'call':
                             fn_node = value.children[0]
 
-                            # Handle nested method calls (e.g., self.a().b())
-                            while fn_node.type == 'attribute':
-                                fn_node = fn_node.children[0]
-
-                            if fn_node.type == 'identifier':
-                                method_name = fn_node.text.decode()
-                                class_name = self.method_return_types.get(
-                                    current_class, {}
-                                ).get(method_name)
+                            if fn_node.type == 'attribute':
+                                # Extract the method name from attribute (e.g., self.jinja_environment)
+                                method_name = fn_node.children[-1].text.decode('utf8')
+                                class_name = self.method_return_types.get(current_class, {}).get(method_name)
+                            elif fn_node.type == 'identifier':
+                                # Direct constructor call (e.g., self.var = ClassName())
+                                method_name = fn_node.text.decode('utf8')
+                                if method_name[0].isupper():  # Heuristic for class constructors
+                                    class_name = method_name
 
                         # Handle direct constructor calls as fallback
                         if not class_name and value.type == 'call':
@@ -371,12 +390,11 @@ class RepoTreeGenerator:
             current_class = func_data["class"]
             class_vars = self._current_classes.get(current_class, {}).get("instance_vars", {}) if current_class else {}
             
-            # Get fresh calls with proper resolution
-            func_node = next(
-                (n for n in tree.root_node.children 
-                 if n.start_point[0] == func_data["start_line"] 
-                 and n.end_point[0] == func_data["end_line"]),
-                None
+            # Use the recursive finder to locate the function node
+            func_node = self.find_node_by_range(
+                tree.root_node,
+                func_data["start_line"],
+                func_data["end_line"]
             )
         
             if func_node:
