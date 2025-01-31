@@ -97,7 +97,9 @@ class RepoTreeGenerator:
                         self._current_classes[struct_name] = {
                             "instance_vars": {},
                             "methods": [],
-                            "base_classes": []
+                            "base_classes": [],
+                            "start_line": current_node.start_point[0],
+                            "end_line": current_node.end_point[0],
                         }
                 
                 # Handle regular struct definitions
@@ -218,7 +220,9 @@ class RepoTreeGenerator:
                     self._current_classes.setdefault(class_name, {
                         "instance_vars": {},
                         "methods": [],
-                        "base_classes": base_classes
+                        "base_classes": base_classes,
+                        "start_line": current_node.start_point[0],
+                        "end_line": current_node.end_point[0],
                     })
                     # Add class body children to stack with class context
                     for child in reversed(body_node.children):
@@ -418,6 +422,8 @@ class RepoTreeGenerator:
                 "methods": methods,
                 "instance_vars": class_info.get("instance_vars", {}),
                 "base_classes": class_info.get("base_classes", []),
+                "start_line": class_info.get("start_line"),
+                "end_line": class_info.get("end_line"),
             }
 
         # Second pass to resolve calls with class context

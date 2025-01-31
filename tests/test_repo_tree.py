@@ -284,6 +284,14 @@ def test_generate_repo_tree_python(
     # Verify classes
     classes = ast_data["classes"]
     assert "DataProcessor" in classes
+    
+    # Verify class line numbers
+    data_processor_class = classes["DataProcessor"]
+    assert "start_line" in data_processor_class
+    assert "end_line" in data_processor_class
+    assert isinstance(data_processor_class["start_line"], int)
+    assert isinstance(data_processor_class["end_line"], int)
+    assert data_processor_class["start_line"] < data_processor_class["end_line"]
 
     # Verify class methods
     methods = classes["DataProcessor"]["methods"]
@@ -736,6 +744,15 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     assert "Point" in classes
     assert "Rectangle" in classes
     assert "Shape" in classes
+    
+    # Verify struct line numbers
+    for struct_name in ["Point", "Rectangle", "Shape"]:
+        struct_class = classes[struct_name]
+        assert "start_line" in struct_class
+        assert "end_line" in struct_class
+        assert isinstance(struct_class["start_line"], int)
+        assert isinstance(struct_class["end_line"], int)
+        assert struct_class["start_line"] < struct_class["end_line"]
 
     # Verify imports (#includes)
     imports = ast_data["imports"]
