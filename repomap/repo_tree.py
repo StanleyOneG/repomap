@@ -89,17 +89,24 @@ class RepoTreeGenerator:
                     for child in current_node.children:
                         if child.type == 'struct_specifier':
                             struct_node = child
+                            # Get name from struct specifier if it exists
+                            struct_name_node = next(
+                                (c for c in child.children if c.type == 'type_identifier'),
+                                None
+                            )
+                            if struct_name_node:
+                                name_node = struct_name_node
                         elif child.type == 'type_identifier':
                             name_node = child
                     
-                    if name_node:
+                    if name_node and struct_node:  # Changed to use struct_node for line numbers
                         struct_name = name_node.text.decode('utf8')
                         self._current_classes[struct_name] = {
                             "instance_vars": {},
                             "methods": [],
                             "base_classes": [],
-                            "start_line": current_node.start_point[0],
-                            "end_line": current_node.end_point[0],
+                            "start_line": struct_node.start_point[0],  # Use struct_node here
+                            "end_line": struct_node.end_point[0],      # Use struct_node here
                         }
                 
                 # Handle regular struct definitions
@@ -113,7 +120,9 @@ class RepoTreeGenerator:
                         self._current_classes[struct_name] = {
                             "instance_vars": {},
                             "methods": [],
-                            "base_classes": []
+                            "base_classes": [],
+                            "start_line": current_node.start_point[0],
+                            "end_line": current_node.end_point[0],
                         }
 
             # Process function/method definitions
