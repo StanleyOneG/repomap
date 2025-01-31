@@ -27,7 +27,6 @@ class FunctionDetailsModel(BaseModel):
     end_line: PositiveInt = Field(..., description="End line of the function definition")
     class_name: Optional[str] = Field(default=None, validation_alias="class", description="Name of the class if the function is a method, otherwise None")
     calls: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of function calls within this function")
-    # is_method: bool = Field(default=False, description="Indicates if the function is a method of a class") # No default=False, and Optional[bool]
     called_by: List[FunctionCallSiteModel] = Field(default_factory=list, description="List of locations where this function is called in the repository")
 
 
@@ -38,15 +37,6 @@ class FunctionDetailsModel(BaseModel):
         class_name = self.class_name
         return class_name is not None
     
-    
-    # @field_validator("is_method", mode="before")
-    # @classmethod
-    # def set_is_method(cls, v: bool, values):
-    #     """Automatically set is_method based on class_name."""
-    #     class_name = values.data.get("class_name")
-    #     return class_name is not None
-
-
     @field_validator("start_line")
     @classmethod
     def validate_start_line(cls, v: int):
@@ -129,60 +119,15 @@ class RepoStructureModel(BaseModel):
     """Root model representing the entire repository AST structure."""
     metadata: MetadataModel = Field(..., description="Metadata about the repository")
     files: Dict[str, FileASTModel] = Field(..., description="Dictionary of files with their AST representations, keys are file paths")
-    # called_by_population_failed: bool = Field(default=False, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
+    is_called_by_population_failed: Optional[bool] = Field(default=None, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
 
-    # def model_post_init(self, __context__):
-    #     """Populate cross-reference 'called_by' fields after model initialization with error handling."""
-    #     try:
-    #         populate_function_callers(self)
-    #     except Exception as e:
-    #         self.called_by_population_failed = True
-
-    # @property
-    # def is_called_by_population_failed(self) -> bool:
-    #     """Read-only property to check if 'called_by' population failed."""
-    #     return self.called_by_population_failed
-
-
-# def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
-#     """
-#     Populates the 'called_by' field in FunctionDetailsModel for each function
-#     by finding all call sites in the repository.
-#     Enhanced matching based on function name and class context.
-#     """
-#     function_map: Dict[tuple[str, Optional[str]], FunctionDetailsModel] = {} # Key is tuple (function_name, class_name)
-
-#     # Create a map of all functions in the repository for efficient lookup by (name, class_name) tuple
-#     for file_path, file_ast_model in repo_structure.files.items():
-#         for function_name, function_detail in file_ast_model.ast.functions.items():
-#             function_map[(function_detail.name, function_detail.class_name)] = function_detail
-
-#     # Iterate through all files and calls to find call sites
-#     for file_path, file_ast_model in repo_structure.files.items():
-#         for call_detail in file_ast_model.ast.calls:
-#             called_function_name = call_detail.name
-#             caller_function_name = call_detail.caller
-#             caller_class_name = call_detail.class_name
-
-#             # Try to match based on function name and class context:
-#             called_function_details = function_map.get((called_function_name, None)) # Try to find global function first
-#             if caller_class_name: # If the call is made from within a class method, prioritize class methods
-#                 called_function_details_method = function_map.get((called_function_name, caller_class_name))
-#                 if called_function_details_method:
-#                     called_function_details = called_function_details_method # Use class method if found
-
-#             if called_function_details: # If we found a match (either global or class method)
-#                 call_site = FunctionCallSiteModel(
-#                     file_path=file_path,
-#                     line_number=call_detail.line,
-#                     caller_function_name=caller_function_name,
-#                     caller_class_name=caller_class_name
-#                 )
-#                 called_function_details.called_by.append(call_site)
-                
-#     # logger.info(f"function map:\n\n{function_map}\n\n")
-
-#     return repo_structure
+    def model_post_init(self, __context__):
+        """Populate cross-reference 'called_by' fields after model initialization with error handling."""
+        try:
+            populate_function_callers(self)
+            self.is_called_by_population_failed = False
+        except Exception as e:
+            self.is_called_by_population_failed = True
 
 def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
     """
@@ -191,23 +136,20 @@ def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructu
     """
     function_map: Dict[str, FunctionDetailsModel] = {}
 
-    # 1. Create a map of all functions in the repository for easy lookup by full_name
+    # Create a map of all functions in the repository for easy lookup by full_name
     for file_path, file_ast_model in repo_structure.files.items():
         for function_name, function_detail in file_ast_model.ast.functions.items():
             function_map[function_detail.full_name] = function_detail
 
-    # 2. Iterate through all files and calls to find call sites
+    # Iterate through all files and calls to find call sites
     for file_path, file_ast_model in repo_structure.files.items():
         for call_detail in file_ast_model.ast.calls:
             called_function_name = call_detail.name  # Name of the function being called
             caller_function_name = call_detail.caller # Name of the function making the call
             caller_class_name = call_detail.class_name
 
-            # Construct the full name of the caller to be more precise
-            caller_full_name = f"{caller_class_name}.{caller_function_name}" if caller_class_name else caller_function_name
-
             # Check if the called function exists in our function_map (defined in the repository)
-            if called_function_name in function_map: # Matching by simple name might be too broad. Refine matching if needed.
+            if called_function_name in function_map:
 
                 call_site = FunctionCallSiteModel(
                     file_path=file_path,
@@ -217,6 +159,5 @@ def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructu
                 )
                 # Get the FunctionDetailsModel of the function being called and append the call site
                 function_map[called_function_name].called_by.append(call_site)
-    logger.info(f"function map:\n\n{function_map}\n\n")
 
-    return repo_structure # Return the modified repo_structure with populated called_by fields
+    return repo_structure
