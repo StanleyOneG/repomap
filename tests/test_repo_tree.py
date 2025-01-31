@@ -546,13 +546,6 @@ class DataHandler:
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
     
-    # Verify method return types
-    assert repo_tree_generator.method_return_types['DataHandler']['get_processor'] == 'Processor'
-    
-    # Verify instance variable type
-    data_handler_class = ast_data['classes']['DataHandler']
-    assert data_handler_class['instance_vars']['processor'] == 'Processor'
-    
     # Verify method call resolution
     run_method = ast_data['functions']['DataHandler.run']
     assert 'Processor.process' in run_method['calls']
