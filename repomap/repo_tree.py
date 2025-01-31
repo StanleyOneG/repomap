@@ -105,8 +105,8 @@ class RepoTreeGenerator:
                             "instance_vars": {},
                             "methods": [],
                             "base_classes": [],
-                            "start_line": struct_node.start_point[0],  # Use struct_node here
-                            "end_line": struct_node.end_point[0],      # Use struct_node here
+                            "start_line": struct_node.start_point[0],
+                            "end_line": current_node.end_point[0],  # Changed to use type_definition's end point
                         }
                 
                 # Handle regular struct definitions

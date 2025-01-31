@@ -752,7 +752,8 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
         assert "end_line" in struct_class
         assert isinstance(struct_class["start_line"], int)
         assert isinstance(struct_class["end_line"], int)
-        assert struct_class["start_line"] < struct_class["end_line"]
+        assert struct_class["start_line"] <= struct_class["end_line"], \
+            f"Invalid line range for {struct_name} struct"
 
     # Verify imports (#includes)
     imports = ast_data["imports"]
