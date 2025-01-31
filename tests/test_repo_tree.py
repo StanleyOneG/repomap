@@ -56,7 +56,7 @@ class DataProcessor:
     def __init__(self):
         self.data = None
 
-    def get_processor(self) -> 'DataProcessor':
+    def get_processor(self) -> DataProcessor:
         return DataProcessor()
 
     def process(self):
@@ -502,7 +502,8 @@ def test_generate_repo_tree_with_nested_methods(
     assert "method_one" in method_two["calls"]
 
 
-def test_method_return_type_resolution(repo_tree_generator, mock_gitlab):
+@patch('gitlab.Gitlab')
+def test_method_return_type_resolution(mock_gitlab, repo_tree_generator):
     """Test instance variable type resolution from method return types."""
     python_content = """
 class Processor:
@@ -520,9 +521,27 @@ class DataHandler:
         self.processor.process()
     """
 
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "main.py",
+            "type": "blob",
+            "path": "src/main.py",
+            "mode": "100644",
+        }
+    ]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
     # Setup mock project and file content
     with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo/")
     
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
