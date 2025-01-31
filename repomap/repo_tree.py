@@ -211,65 +211,58 @@ class RepoTreeGenerator:
         for n, tag in captures:  
             if tag == 'name.reference.call':  
                 current_node = n
-                resolved_parts = []
+                parts = []
                 current_context = current_class
-                current_node_stack = []
 
-                # Decompose attribute chain
+                # Decompose attribute chain into ordered parts
                 while current_node and current_node.type == 'attribute':
-                    current_node_stack.append(current_node)
+                    if len(current_node.children) >= 3:
+                        attr_name = current_node.children[2].text.decode('utf8')
+                        parts.append(attr_name)
                     current_node = current_node.children[0]
-
+                
                 if current_node and current_node.type == 'identifier':
-                    current_node_stack.append(current_node)
+                    parts.append(current_node.text.decode('utf8'))
+                
+                parts = parts[::-1]  # Reverse to get left-to-right order
 
-                # Rebuild the chain with proper resolution
-                while current_node_stack:
-                    part_node = current_node_stack.pop()
+                if not parts:
+                    continue
+
+                method_name = parts[-1]
+                object_parts = parts[:-1]
+
+                # Resolve context through object parts
+                for part in object_parts:
+                    if part == 'self':
+                        continue  # Maintain current class context
                     
-                    if part_node.type == 'identifier':
-                        part = part_node.text.decode('utf8')
-                        # Handle self references
-                        if part == 'self' and current_context:
-                            resolved_parts = [current_context]
+                    # Check class instance variables
+                    if current_context:
+                        class_vars = self._current_classes.get(
+                            current_context, {}
+                        ).get('instance_vars', {})
+                        if part in class_vars:
+                            current_context = class_vars[part]
                             continue
-                            
-                        # Check if this is a variable in current context
-                        if current_context:
-                            class_vars = self._current_classes.get(current_context, {}).get('instance_vars', {})
-                            if part in class_vars:
-                                resolved_parts.append(class_vars[part])
-                                current_context = class_vars[part]
-                                continue
-                        
-                        # Check local variables
-                        if part in local_vars:
-                            resolved_parts.append(local_vars[part])
-                            current_context = local_vars[part]
-                            continue
-                            
-                        resolved_parts.append(part)
-                        current_context = None  # Reset context for non-object chains
+                    
+                    # Check local variables
+                    if part in local_vars:
+                        current_context = local_vars[part]
+                        continue
+                    
+                    # Unresolvable part, reset context
+                    current_context = None
+                    break
 
-                    elif part_node.type == 'attribute':
-                        attr_part = part_node.children[2].text.decode('utf8')
-                        # Resolve attribute against current context
-                        if current_context:
-                            class_vars = self._current_classes.get(current_context, {}).get('instance_vars', {})
-                            if attr_part in class_vars:
-                                resolved_parts.append(class_vars[attr_part])
-                                current_context = class_vars[attr_part]
-                                continue
-                        
-                        resolved_parts.append(attr_part)
-                        current_context = None
-
-                # Build final call path
-                if len(resolved_parts) > 1:
-                    final_call = '.'.join(resolved_parts)
-                    # Filter out invalid calls
-                    if final_call and not final_call.startswith('__init__'):
-                        calls.append(final_call)
+                # Build final call
+                if current_context:
+                    resolved_call = f"{current_context}.{method_name}"
+                else:
+                    resolved_call = '.'.join(parts)
+                
+                if resolved_call and not resolved_call.startswith('__init__'):
+                    calls.append(resolved_call)
 
         return list(set(calls))
 

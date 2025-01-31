@@ -905,3 +905,38 @@ def test_generate_repo_tree_with_default_ref(
     # Verify default branch is used
     assert repo_tree["metadata"]["ref"] == "main"
     assert "src/main.py" in repo_tree["files"]
+def test_cross_class_method_resolution(repo_tree_generator, mock_gitlab):
+    """Test method calls through instance variables resolve to correct class."""
+    python_content = """
+class Processor:
+    def process(self):
+        pass
+
+class ClassName:
+    def __init__(self):
+        self.processor = Processor()
+    
+    def make_something_else(self):
+        self.processor.process()
+        self._internal_method()
+    
+    def _internal_method(self):
+        pass
+"""
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/repo")
+    
+    file_data = repo_tree['files']['src/main.py']
+    ast_data = file_data['ast']
+    
+    # Verify method calls
+    func_info = ast_data['functions']['ClassName.make_something_else']
+    assert 'Processor.process' in func_info['calls'], \
+        "Should resolve processor method to Processor class"
+    assert 'ClassName._internal_method' in func_info['calls'], \
+        "Should resolve self method to original class"
+    
+    # Verify instance variable type tracking
+    class_info = ast_data['classes']['ClassName']
+    assert class_info['instance_vars']['processor'] == 'Processor', \
+        "Should detect processor variable type"
