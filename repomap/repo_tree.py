@@ -79,6 +79,41 @@ class RepoTreeGenerator:
         while stack:
             current_node, current_class = stack.pop()
 
+            # Process C structs and typedefs
+            if lang == 'c':
+                # Handle typedef struct
+                if current_node.type == 'type_definition':
+                    struct_node = None
+                    name_node = None
+                    
+                    for child in current_node.children:
+                        if child.type == 'struct_specifier':
+                            struct_node = child
+                        elif child.type == 'type_identifier':
+                            name_node = child
+                    
+                    if name_node:
+                        struct_name = name_node.text.decode('utf8')
+                        self._current_classes[struct_name] = {
+                            "instance_vars": {},
+                            "methods": [],
+                            "base_classes": []
+                        }
+                
+                # Handle regular struct definitions
+                elif current_node.type == 'struct_specifier':
+                    name_node = next(
+                        (c for c in current_node.children if c.type == 'type_identifier'),
+                        None
+                    )
+                    if name_node:
+                        struct_name = name_node.text.decode('utf8')
+                        self._current_classes[struct_name] = {
+                            "instance_vars": {},
+                            "methods": [],
+                            "base_classes": []
+                        }
+
             # Process function/method definitions
             if current_node.type in ('function_definition', 'method_definition'):
                 name_node = None
@@ -432,6 +467,17 @@ class RepoTreeGenerator:
                             module.append(child.text.decode('utf8'))
                     if module:
                         ast_data["imports"].append('.'.join(module))
+                elif node.type == 'preproc_include':
+                    # Handle C-style #include statements
+                    for child in node.children:
+                        if child.type == 'string_literal':
+                            # Remove quotes from "header.h"
+                            header = child.text.decode('utf8').strip('"')
+                            ast_data["imports"].append(header)
+                        elif child.type == 'system_lib_string':
+                            # Remove <> from <header.h>
+                            header = child.text.decode('utf8').strip('<>')
+                            ast_data["imports"].append(header)
                 stack.extend(node.children)
 
         find_imports(tree.root_node)
