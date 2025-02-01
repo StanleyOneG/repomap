@@ -29,6 +29,7 @@ setup(
         "requests>=2.32.3",
         "types-requests>=2.32.0.20241016",
         "python-gitlab>=4.4.0",
+        "pygithub>=2.5.0",
         "python-dotenv>=1.0.1",
         "pydantic-settings>=2.7.1",
         "setuptools>=75.8.0",
