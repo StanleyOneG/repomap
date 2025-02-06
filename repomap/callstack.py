@@ -20,6 +20,7 @@ class CallStackGenerator:
 
     SUPPORTED_LANGUAGES = {
         '.c': 'c',
+        '.cc': 'c',
         '.cpp': 'cpp',
         '.py': 'python',
         '.php': 'php',
