@@ -184,7 +184,7 @@ class GitLabProvider(RepoProvider):
             # Build tree structure
             for i, part in enumerate(parts):
                 if i == len(parts) - 1:
-                    # Leaf node (file)
+                    # File
                     current[part] = {
                         'type': item['type'],
                         'mode': item.get('mode', '100644'),
@@ -276,11 +276,9 @@ class GitHubProvider(RepoProvider):
             parsed = urlparse(file_url)
             path_parts = parsed.path.strip('/').split('/')
 
-            # Extract repo owner and name
             owner = path_parts[0]
             repo_name = path_parts[1]
 
-            # Extract ref and file path
             if 'blob' not in path_parts:
                 return None
             blob_index = path_parts.index('blob')
@@ -311,12 +309,12 @@ class GitHubProvider(RepoProvider):
             ref = repo.default_branch
 
         def get_tree_recursive(path='', depth=0):
-            if depth > 20:  # Add reasonable depth limit
+            if depth > 20:
                 return {}
 
             try:
                 contents = repo.get_contents(path, ref=ref)
-                if not contents:  # Handle empty directories
+                if not contents:
                     return {}
 
                 # Convert to list if single item
@@ -325,7 +323,7 @@ class GitHubProvider(RepoProvider):
 
                 structure = {}
                 for content in contents:
-                    name = str(content.name)  # Convert MagicMock to string if needed
+                    name = str(content.name)
                     if content.type == 'dir':
                         structure[name] = get_tree_recursive(content.path, depth + 1)
                     else:

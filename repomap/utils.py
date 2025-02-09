@@ -25,11 +25,9 @@ def store_repo_map(repo_map: Dict, output_path: Optional[str] = None) -> str:
         output_path = 'repomap.json'
 
     try:
-        # Ensure parent directories exist
         output_file = Path(output_path)
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write JSON with pretty formatting
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(repo_map, f, indent=2, ensure_ascii=False)
 
@@ -77,23 +75,19 @@ def setup_logging(level: str = 'INFO') -> None:
     Raises:
         ValueError: If invalid logging level provided
     """
-    # Convert string level to logging constant
     try:
         numeric_level = getattr(logging, level.upper())
     except AttributeError:
         raise ValueError(f"Invalid log level: {level}")
 
-    # Configure root logger
     logging.basicConfig(
         level=numeric_level,
         format='%(asctime)s [%(levelname)8s] %(message)s (%(filename)s:%(lineno)d)',
         datefmt='%Y-%m-%d %H:%M:%S',
     )
 
-    # Also set level for our package's logger
     logger = logging.getLogger('repomap')
     logger.setLevel(numeric_level)
 
-    # Add debug message to verify verbose logging
     if level.upper() == 'DEBUG':
         logger.debug("Debug logging enabled")

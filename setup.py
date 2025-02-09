@@ -9,10 +9,10 @@ setup(
     name="repomap",
     version="0.1.0",
     author="Stanislav Goncharuk",
-    description="Repository map generator for GitLab repositories",
+    description="Repository map generator for GitLab and GitHub repositories",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/username/repomap",
+    url="https://github.com/StanleyOneG/repomap",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",

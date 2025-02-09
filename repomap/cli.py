@@ -31,7 +31,7 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
     )
 
     parser.add_argument(
-        "repo_url", help="GitLab repository URL", nargs='?'  # Make repo_url optional
+        "repo_url", help="GitLab repository URL", nargs='?'
     )
 
     parser.add_argument(
@@ -136,7 +136,6 @@ def main() -> Optional[int]:  # noqa: C901
     """
     args = parse_args()
 
-    # Setup logging
     log_level = 'DEBUG' if args.verbose else 'INFO'
     setup_logging(log_level)
 

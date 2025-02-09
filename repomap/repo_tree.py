@@ -36,7 +36,7 @@ class RepoTreeGenerator:
         self.queries = self.call_stack_gen.queries
         self.provider = None
         self._current_classes = {}
-        self.method_return_types = {}  # Track method return types for variable resolution
+        self.method_return_types = {}
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -99,14 +99,14 @@ class RepoTreeGenerator:
                         elif child.type == 'type_identifier':
                             name_node = child
                     
-                    if name_node and struct_node:  # Changed to use struct_node for line numbers
+                    if name_node and struct_node:
                         struct_name = name_node.text.decode('utf8')
                         self._current_classes[struct_name] = {
                             "instance_vars": {},
                             "methods": [],
                             "base_classes": [],
                             "start_line": struct_node.start_point[0],
-                            "end_line": current_node.end_point[0],  # Changed to use type_definition's end point
+                            "end_line": current_node.end_point[0],
                         }
                 
                 # Handle regular struct definitions
@@ -162,7 +162,7 @@ class RepoTreeGenerator:
                         "end_line": current_node.end_point[0],
                         "class": current_class,
                         "calls": list(set(calls)),
-                        "local_vars": {},  # Initialize local_vars
+                        "local_vars": {},
                     }
 
                     # Extract return type for Python
@@ -283,7 +283,7 @@ class RepoTreeGenerator:
                 # Resolve context through object parts
                 for part in object_parts:
                     if part == 'self':
-                        continue  # Maintain current class context
+                        continue
                     
                     # Check class instance variables
                     if current_context:
@@ -299,7 +299,6 @@ class RepoTreeGenerator:
                         current_context = local_vars[part]
                         continue
                     
-                    # Unresolvable part, reset context
                     current_context = None
                     break
 
@@ -364,12 +363,10 @@ class RepoTreeGenerator:
                     if current.type == 'identifier' and current.text.decode() == 'self':
                         attr = '.'.join(attr_parts)
 
-                        # Get class name from RHS
                         class_name = self._get_rhs_type(value, current_class)
 
                         if class_name:
                             instance_vars[attr] = class_name
-                            # logger.debug(f"Captured instance variable: {attr} = {class_name}")
 
                 # Handle local variable assignments (var = ClassName() or var = self.method())
                 elif target.type == 'identifier':
@@ -377,7 +374,6 @@ class RepoTreeGenerator:
                     class_name = self._get_rhs_type(value, current_class)
                     if class_name:
                         instance_vars[var_name] = class_name
-                        # logger.debug(f"Captured local variable: {var_name} = {class_name}")
 
             stack.extend(reversed(current_node.children))
 
@@ -513,7 +509,6 @@ class RepoTreeGenerator:
                     ast_data = processor._parse_file_ast(content, lang)
                     return path, {"language": lang, "ast": ast_data}
         except Exception as e:
-            # logger.error(f"Failed to process {path}: {str(e)}")
             pass
         return path, None
 
@@ -528,7 +523,6 @@ class RepoTreeGenerator:
         except ValueError as e:
             raise e
         except Exception as e:
-            # logger.warning(f"Failed to get default branch: {str(e)}")
             ref = 'main'
 
         try:
@@ -538,7 +532,6 @@ class RepoTreeGenerator:
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
 
-        # Add complexity limits
         self.node_count = 0
         self.MAX_NODES = 10000
 
@@ -572,7 +565,7 @@ class RepoTreeGenerator:
             
             with multiprocessing.Pool(
                 processes=max_workers,
-                maxtasksperchild=50  # Prevent memory bloat
+                maxtasksperchild=50
             ) as pool:
                 results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
@@ -593,7 +586,6 @@ class RepoTreeGenerator:
                                 "ast": ast_data,
                             }
                 except Exception as e:
-                    # logger.error(f"Failed to process {path}: {str(e)}")
                     pass
 
         return repo_tree

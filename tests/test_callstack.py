@@ -189,7 +189,7 @@ def test_generate_call_stack_c(mock_gitlab, generator):
     # Test line inside match function
     call_stack = generator.generate_call_stack(
         url, 57
-    )  # Line with the match function definition
+    )
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'match'
@@ -283,7 +283,7 @@ def test_get_function_content(mock_gitlab):
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    generator = CallStackGenerator()  # No structure file needed for testing
+    generator = CallStackGenerator()
     url = "https://example.com/group/project/-/blob/main/src/file.py"
 
     # Test getting main function content

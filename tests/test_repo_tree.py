@@ -111,7 +111,6 @@ def mock_gitlab():
         mock_gl.projects.get.return_value = mock_project
         mock_project.default_branch = 'main'
 
-        # Mock branches, tags, and commits for ref validation
         mock_branches = MagicMock()
         mock_branches.get.side_effect = lambda ref: (
             MagicMock() if ref == 'dev' else gitlab.exceptions.GitlabGetError()
@@ -588,7 +587,6 @@ class Flask:
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
     
-    # Verify method calls in create_jinja_environment
     create_method = ast_data['functions']['Flask.create_jinja_environment']
     assert 'Environment.globals_update' in create_method["calls"], \
         "Method call should be resolved to 'Environment.globals_update'"
@@ -937,7 +935,7 @@ def test_generate_repo_tree_with_default_ref(
         repo_tree_generator, '_get_file_content', return_value=mock_python_content
     ):
         repo_tree = repo_tree_generator.generate_repo_tree(
-            "https://example.com/group/repo"  # No ref provided
+            "https://example.com/group/repo"
         )
 
     # Verify default branch is used

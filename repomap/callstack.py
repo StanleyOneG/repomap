@@ -129,7 +129,6 @@ class CallStackGenerator:
                         elif child.type == 'identifier':
                             return (child.text.decode('utf8'), start_line, end_line)
 
-            # Continue traversing
             if cursor.goto_first_child():
                 result = visit_node()
                 if result:
