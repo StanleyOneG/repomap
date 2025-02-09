@@ -9,7 +9,7 @@ setup(
     name="repomap",
     version="0.1.0",
     author="Stanislav Goncharuk",
-    description="Repository map generator for GitLab and GitHub repositories",
+    description="A Python library and CLI tool for generating repository maps and analyzing code structure from GitLab and GitHub repositories as Pydantic models.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/StanleyOneG/repomap",
