@@ -1,6 +1,6 @@
-# repomap
+# REPOMAP
 
-A tool for generating repository maps and analyzing code structure from GitLab and GitHub repositories as Pydantic models. 
+A Python library and CLI tool for generating repository maps and analyzing code structure from GitLab and GitHub repositories as Pydantic models. 
 
 Can be used both as a CLI tool and as a Python library.
 
