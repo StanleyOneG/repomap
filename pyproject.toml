@@ -1,9 +1,12 @@
 [tool.poetry]
-name = "repomap"
+name = "repomap-suite"
 version = "0.1.0"
 description = ""
 authors = ["Stanislav <goncharuk.sm@yandex.ru>"]
 readme = "README.md"
+packages = [
+    { include = "repomap" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.12"

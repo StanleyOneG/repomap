@@ -23,7 +23,7 @@ Can be used both as a CLI tool and as a Python library.
 ## Installation
 
 ```bash
-pip install repomap
+pip install repomap-suite
 ```
 
 ## Usage as a Library
