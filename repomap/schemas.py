@@ -1,7 +1,8 @@
 import logging
 from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field, NonNegativeInt, StringConstraints, computed_field
 from typing_extensions import Annotated
-from pydantic import BaseModel, Field, field_validator, PositiveInt, StringConstraints, computed_field
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -9,26 +10,55 @@ logging.basicConfig(level=logging.INFO)
 
 class MetadataModel(BaseModel):
     """Metadata about the repository."""
-    url: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="URL of the repository")
-    ref: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Reference (branch/tag/commit) of the repository")
+
+    url: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="URL of the repository"
+    )
+    ref: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Reference (branch/tag/commit) of the repository"
+    )
+
 
 class FunctionCallSiteModel(BaseModel):
     """Details about a specific call site of a function."""
+
     file_path: str = Field(..., description="Path to the file where the call occurs")
-    line_number: PositiveInt = Field(..., description="Line number where the call occurs")
-    caller_function_name: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the function making the call")
-    caller_class_name: Optional[str] = Field(default=None, description="Name of the class of the calling function, if applicable")
+    line_number: NonNegativeInt = Field(
+        ..., description="Line number where the call occurs"
+    )
+    caller_function_name: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Name of the function making the call"
+    )
+    caller_class_name: Optional[str] = Field(
+        default=None,
+        description="Name of the class of the calling function, if applicable",
+    )
 
 
 class FunctionDetailsModel(BaseModel):
     """Details about a function in the AST."""
-    name: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the function")
-    start_line: PositiveInt = Field(..., description="Start line of the function definition")
-    end_line: PositiveInt = Field(..., description="End line of the function definition")
-    class_name: Optional[str] = Field(default=None, validation_alias="class", description="Name of the class if the function is a method, otherwise None")
-    calls: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of function calls within this function")
-    called_by: List[FunctionCallSiteModel] = Field(default_factory=list, description="List of locations where this function is called in the repository")
 
+    name: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Name of the function"
+    )
+    start_line: NonNegativeInt = Field(
+        ..., description="Start line of the function definition"
+    )
+    end_line: NonNegativeInt = Field(
+        ..., description="End line of the function definition"
+    )
+    class_name: Optional[str] = Field(
+        default=None,
+        validation_alias="class",
+        description="Name of the class if the function is a method, otherwise None",
+    )
+    calls: List[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default_factory=list, description="List of function calls within this function"
+    )
+    called_by: List[FunctionCallSiteModel] = Field(
+        default_factory=list,
+        description="List of locations where this function is called in the repository",
+    )
 
     @computed_field
     @property
@@ -36,98 +66,104 @@ class FunctionDetailsModel(BaseModel):
         """Automatically set is_method based on class_name."""
         class_name = self.class_name
         return class_name is not None
-    
-    @field_validator("start_line")
-    @classmethod
-    def validate_start_line(cls, v: int):
-        """Ensure start_line is positive."""
-        if v <= 0:
-            raise ValueError("start_line must be a positive integer")
-        return v
-
-    @field_validator("end_line")
-    @classmethod
-    def validate_end_line_after_start(cls, end_line: int, values):
-        """Ensure end_line is not before start_line."""
-        start_line = values.data.get("start_line")
-        if start_line is not None and end_line < start_line:
-            raise ValueError("end_line must be greater than or equal to start_line")
-        return end_line
 
     @property
     def full_name(self) -> str:
         """Fully qualified name including class"""
-        return f"{self.class_name}.{self.name}" if self.is_method and self.class_name else self.name
+        return (
+            f"{self.class_name}.{self.name}"
+            if self.is_method and self.class_name
+            else self.name
+        )
 
 
 class ClassDetailsModel(BaseModel):
     """Details about a class in the AST."""
-    name: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the class")
-    start_line: PositiveInt = Field(..., description="Start line of the class definition")
-    end_line: PositiveInt = Field(..., description="End line of the class definition")
-    base_classes: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of base classes")
-    methods: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of method names defined in the class")
 
-    @field_validator("start_line")
-    @classmethod
-    def validate_start_line(cls, v: int):
-        """Ensure start_line is positive."""
-        if v <= 0:
-            raise ValueError("start_line must be a positive integer")
-        return v
-
-    @field_validator("end_line")
-    @classmethod
-    def validate_end_line_after_start(cls, end_line: int, values):
-        """Ensure end_line is not before start_line."""
-        start_line = values.data.get("start_line")
-        if start_line is not None and end_line < start_line:
-            raise ValueError("end_line must be greater than or equal to start_line")
-        return end_line
+    name: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Name of the class"
+    )
+    start_line: NonNegativeInt = Field(
+        ..., description="Start line of the class definition"
+    )
+    end_line: NonNegativeInt = Field(
+        ..., description="End line of the class definition"
+    )
+    base_classes: List[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default_factory=list, description="List of base classes"
+    )
+    methods: List[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default_factory=list, description="List of method names defined in the class"
+    )
 
 
 class CallDetailsModel(BaseModel):
     """Details about a function call in the AST."""
-    name: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the called function")
-    line: PositiveInt = Field(..., description="Line number where the call occurs")
-    caller: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Name of the function or class method where the call is made")
-    class_name: Optional[str] = Field(default=None, alias='class', description="Name of the class if the call is within a class method, otherwise None")
 
-    @field_validator("line")
-    @classmethod
-    def validate_line(cls, v: int):
-        """Ensure line is positive."""
-        if v <= 0:
-            raise ValueError("line must be a positive integer")
-        return v
+    name: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Name of the called function"
+    )
+    line: NonNegativeInt = Field(..., description="Line number where the call occurs")
+    caller: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Name of the function or class method where the call is made"
+    )
+    class_name: Optional[str] = Field(
+        default=None,
+        alias='class',
+        description="Name of the class if the call is within a class method, otherwise None",
+    )
 
 
 class ASTModel(BaseModel):
     """Abstract Syntax Tree representation of a file."""
-    functions: Dict[str, FunctionDetailsModel] = Field(default_factory=dict, description="Dictionary of functions with their details, keys are function names")
-    classes: Dict[str, ClassDetailsModel] = Field(default_factory=dict, description="Dictionary of classes with their details, keys are class names")
-    calls: List[CallDetailsModel] = Field(default_factory=list, description="List of function calls in the file")
-    imports: List[Annotated[str, StringConstraints(min_length=1)]] = Field(default_factory=list, description="List of imported modules/names in the file")
+
+    functions: Dict[str, FunctionDetailsModel] = Field(
+        default_factory=dict,
+        description="Dictionary of functions with their details, keys are function names",
+    )
+    classes: Dict[str, ClassDetailsModel] = Field(
+        default_factory=dict,
+        description="Dictionary of classes with their details, keys are class names",
+    )
+    calls: List[CallDetailsModel] = Field(
+        default_factory=list, description="List of function calls in the file"
+    )
+    imports: List[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default_factory=list, description="List of imported modules/names in the file"
+    )
 
 
 class FileASTModel(BaseModel):
     """AST and language information for a specific file."""
-    language: Annotated[str, StringConstraints(min_length=1)] = Field(..., description="Language of the file")
+
+    language: Annotated[str, StringConstraints(min_length=1)] = Field(
+        ..., description="Language of the file"
+    )
     ast: ASTModel = Field(..., description="AST representation of the file content")
+
 
 class RepoStructureModel(BaseModel):
     """Root model representing the entire repository AST structure."""
+
     metadata: MetadataModel = Field(..., description="Metadata about the repository")
-    files: Dict[str, FileASTModel] = Field(..., description="Dictionary of files with their AST representations, keys are file paths")
-    is_called_by_population_failed: Optional[bool] = Field(default=None, initvar=False, description="Internal flag to indicate if 'called_by' population failed")
+    files: Dict[str, FileASTModel] = Field(
+        ...,
+        description="Dictionary of files with their AST representations, keys are file paths",
+    )
+    is_called_by_population_failed: Optional[bool] = Field(
+        default=None,
+        initvar=False,
+        description="Internal flag to indicate if 'called_by' population failed",
+    )
 
     def model_post_init(self, __context__):
         """Populate cross-reference 'called_by' fields after model initialization with error handling."""
         try:
             populate_function_callers(self)
             self.is_called_by_population_failed = False
-        except Exception as e:
+        except Exception:
             self.is_called_by_population_failed = True
+
 
 def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructureModel:
     """
@@ -145,7 +181,9 @@ def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructu
     for file_path, file_ast_model in repo_structure.files.items():
         for call_detail in file_ast_model.ast.calls:
             called_function_name = call_detail.name  # Name of the function being called
-            caller_function_name = call_detail.caller # Name of the function making the call
+            caller_function_name = (
+                call_detail.caller
+            )  # Name of the function making the call
             caller_class_name = call_detail.class_name
 
             # Check if the called function exists in our function_map (defined in the repository)
@@ -155,7 +193,7 @@ def populate_function_callers(repo_structure: RepoStructureModel) -> RepoStructu
                     file_path=file_path,
                     line_number=call_detail.line,
                     caller_function_name=caller_function_name,
-                    caller_class_name=caller_class_name
+                    caller_class_name=caller_class_name,
                 )
                 # Get the FunctionDetailsModel of the function being called and append the call site
                 function_map[called_function_name].called_by.append(call_site)
