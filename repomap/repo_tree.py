@@ -1,7 +1,6 @@
 """Module for generating repository AST tree."""
 
 import json
-import logging
 import multiprocessing
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -60,7 +59,7 @@ class RepoTreeGenerator:
         """
         return self.call_stack_gen._detect_language(file_path)
 
-    def _find_functions(
+    def _find_functions(  # noqa: C901
         self,
         node: Node,
         functions: Dict[str, Any],
@@ -85,20 +84,24 @@ class RepoTreeGenerator:
                 if current_node.type == 'type_definition':
                     struct_node = None
                     name_node = None
-                    
+
                     for child in current_node.children:
                         if child.type == 'struct_specifier':
                             struct_node = child
                             # Get name from struct specifier if it exists
                             struct_name_node = next(
-                                (c for c in child.children if c.type == 'type_identifier'),
-                                None
+                                (
+                                    c
+                                    for c in child.children
+                                    if c.type == 'type_identifier'
+                                ),
+                                None,
                             )
                             if struct_name_node:
                                 name_node = struct_name_node
                         elif child.type == 'type_identifier':
                             name_node = child
-                    
+
                     if name_node and struct_node:
                         struct_name = name_node.text.decode('utf8')
                         self._current_classes[struct_name] = {
@@ -108,12 +111,16 @@ class RepoTreeGenerator:
                             "start_line": struct_node.start_point[0],
                             "end_line": current_node.end_point[0],
                         }
-                
+
                 # Handle regular struct definitions
                 elif current_node.type == 'struct_specifier':
                     name_node = next(
-                        (c for c in current_node.children if c.type == 'type_identifier'),
-                        None
+                        (
+                            c
+                            for c in current_node.children
+                            if c.type == 'type_identifier'
+                        ),
+                        None,
                     )
                     if name_node:
                         struct_name = name_node.text.decode('utf8')
@@ -169,15 +176,29 @@ class RepoTreeGenerator:
                     if lang == 'python' and current_class:
                         return_type = None
                         return_type_node = next(
-                            (c for c in current_node.children if c.type == 'return_type'),
-                            None
+                            (
+                                c
+                                for c in current_node.children
+                                if c.type == 'return_type'
+                            ),
+                            None,
                         )
                         if return_type_node:
                             # Get first meaningful type node (supports identifiers, subscriptions, etc.)
                             type_node = next(
-                                (c for c in return_type_node.children 
-                                 if c.type in ('identifier', 'subscript', 'attribute', 'type', 'string')),
-                                None
+                                (
+                                    c
+                                    for c in return_type_node.children
+                                    if c.type
+                                    in (
+                                        'identifier',
+                                        'subscript',
+                                        'attribute',
+                                        'type',
+                                        'string',
+                                    )
+                                ),
+                                None,
                             )
                             if type_node:
                                 return_type = type_node.text.decode('utf8')
@@ -185,11 +206,15 @@ class RepoTreeGenerator:
                                 if type_node.type == 'string':
                                     return_type = return_type.strip("'\"")
                         if return_type:
-                            self.method_return_types.setdefault(current_class, {})[func_name] = return_type
+                            self.method_return_types.setdefault(current_class, {})[
+                                func_name
+                            ] = return_type
 
                     # Process __init__ for instance variables
                     if current_class and func_name == "__init__" and body_node:
-                        instance_vars = self._find_instance_vars(body_node, current_class)
+                        instance_vars = self._find_instance_vars(
+                            body_node, current_class
+                        )
                         self._current_classes.setdefault(
                             current_class, {"instance_vars": {}}
                         )
@@ -217,22 +242,21 @@ class RepoTreeGenerator:
                     elif child.type == 'argument_list':
                         # Get base classes for Python
                         base_class_nodes = [
-                            n for n in child.children 
-                            if n.type not in (',', '(', ')')
+                            n for n in child.children if n.type not in (',', '(', ')')
                         ]
-                        base_classes = [
-                            n.text.decode('utf8') 
-                            for n in base_class_nodes
-                        ]
+                        base_classes = [n.text.decode('utf8') for n in base_class_nodes]
 
                 if class_name and body_node:
-                    self._current_classes.setdefault(class_name, {
-                        "instance_vars": {},
-                        "methods": [],
-                        "base_classes": base_classes,
-                        "start_line": current_node.start_point[0],
-                        "end_line": current_node.end_point[0],
-                    })
+                    self._current_classes.setdefault(
+                        class_name,
+                        {
+                            "instance_vars": {},
+                            "methods": [],
+                            "base_classes": base_classes,
+                            "start_line": current_node.start_point[0],
+                            "end_line": current_node.end_point[0],
+                        },
+                    )
                     # Add class body children to stack with class context
                     for child in reversed(body_node.children):
                         stack.append((child, class_name))
@@ -242,22 +266,22 @@ class RepoTreeGenerator:
                 for child in reversed(current_node.children):
                     stack.append((child, current_class))
 
-    def _find_function_calls(  
-        self,  
-        node: Node,  
-        lang: str,  
-        current_class: Optional[str] = None,  
-        local_vars: Dict[str, str] = {},  
-    ) -> List[str]:  
-        if lang not in self.queries:  
-            return []  
-        
-        calls = []  
-        query = self.queries[lang]  
-        captures = query.captures(node)  
-        
-        for n, tag in captures:  
-            if tag == 'name.reference.call':  
+    def _find_function_calls(  # noqa: C901
+        self,
+        node: Node,
+        lang: str,
+        current_class: Optional[str] = None,
+        local_vars: Dict[str, str] = {},
+    ) -> List[str]:
+        if lang not in self.queries:
+            return []
+
+        calls = []
+        query = self.queries[lang]
+        captures = query.captures(node)
+
+        for n, tag in captures:
+            if tag == 'name.reference.call':
                 current_node = n
                 parts = []
                 current_context = current_class
@@ -268,10 +292,10 @@ class RepoTreeGenerator:
                         attr_name = current_node.children[2].text.decode('utf8')
                         parts.append(attr_name)
                     current_node = current_node.children[0]
-                
+
                 if current_node and current_node.type == 'identifier':
                     parts.append(current_node.text.decode('utf8'))
-                
+
                 parts = parts[::-1]  # Reverse to get left-to-right order
 
                 if not parts:
@@ -284,21 +308,21 @@ class RepoTreeGenerator:
                 for part in object_parts:
                     if part == 'self':
                         continue
-                    
+
                     # Check class instance variables
                     if current_context:
-                        class_vars = self._current_classes.get(
-                            current_context, {}
-                        ).get('instance_vars', {})
+                        class_vars = self._current_classes.get(current_context, {}).get(
+                            'instance_vars', {}
+                        )
                         if part in class_vars:
                             current_context = class_vars[part]
                             continue
-                    
+
                     # Check local variables
                     if part in local_vars:
                         current_context = local_vars[part]
                         continue
-                    
+
                     current_context = None
                     break
 
@@ -307,20 +331,22 @@ class RepoTreeGenerator:
                     resolved_call = f"{current_context}.{method_name}"
                 else:
                     resolved_call = '.'.join(parts)
-                
+
                 if resolved_call and not resolved_call.startswith('__init__'):
                     calls.append(resolved_call)
 
         return list(set(calls))
 
-    def find_node_by_range(self, node: Node, start_line: int, end_line: int) -> Optional[Node]:
+    def find_node_by_range(
+        self, node: Node, start_line: int, end_line: int
+    ) -> Optional[Node]:
         """Recursively find a node by its start and end lines.
-        
+
         Args:
             node (Node): Current AST node.
             start_line (int): Starting line number.
             end_line (int): Ending line number.
-        
+
         Returns:
             Optional[Node]: The node matching the specified line range or None.
         """
@@ -332,9 +358,13 @@ class RepoTreeGenerator:
                 return result
         return None
 
-    def _find_instance_vars(self, node: Node, current_class: str) -> Dict[str, str]:
+    def _find_instance_vars(  # noqa: C901
+        self,
+        node: Node,
+        current_class: str,
+    ) -> Dict[str, str]:  # noqa: C901
         """Track instance variables and local variables within a class.
-        
+
         Args:
             node (Node): The AST node to process.
             current_class (str): The name of the current class.
@@ -386,12 +416,12 @@ class RepoTreeGenerator:
             class_name = value_node.children[0].text.decode()
             if class_name[0].isupper():
                 return class_name
-        
+
         # Handle method calls (self.method())
         if value_node.type == 'call' and value_node.children[0].type == 'attribute':
             method_name = value_node.children[0].children[-1].text.decode()
             return self.method_return_types.get(current_class, {}).get(method_name)
-        
+
         # Handle attribute access (self.some_attribute)
         if value_node.type == 'attribute':
             attr_parts = []
@@ -401,11 +431,15 @@ class RepoTreeGenerator:
                 current = current.children[0]
             if current.text.decode() == 'self':
                 attr = '.'.join(attr_parts)
-                return self._current_classes.get(current_class, {}).get('instance_vars', {}).get(attr)
-        
+                return (
+                    self._current_classes.get(current_class, {})
+                    .get('instance_vars', {})
+                    .get(attr)
+                )
+
         return None
 
-    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:
+    def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:  # noqa: C901
         parser = self.parsers[lang]
         tree = parser.parse(bytes(content, 'utf8'))
 
@@ -434,18 +468,22 @@ class RepoTreeGenerator:
         # Second pass to resolve calls with class context
         for func_key, func_data in ast_data["functions"].items():
             current_class = func_data["class"]
-            class_vars = self._current_classes.get(current_class, {}).get("instance_vars", {}) if current_class else {}
-            
+            class_vars = (  # noqa: F841
+                self._current_classes.get(current_class, {}).get("instance_vars", {})
+                if current_class
+                else {}
+            )
+
             # Use the recursive finder to locate the function node
             func_node = self.find_node_by_range(
-                tree.root_node,
-                func_data["start_line"],
-                func_data["end_line"]
+                tree.root_node, func_data["start_line"], func_data["end_line"]
             )
-        
+
             if func_node:
                 local_vars = func_data.get("local_vars", {})
-                resolved_calls = self._find_function_calls(func_node, lang, current_class, local_vars)
+                resolved_calls = self._find_function_calls(
+                    func_node, lang, current_class, local_vars
+                )
                 func_data["calls"] = list(set(resolved_calls))
 
         # Collect all calls
@@ -508,12 +546,14 @@ class RepoTreeGenerator:
                 if content:
                     ast_data = processor._parse_file_ast(content, lang)
                     return path, {"language": lang, "ast": ast_data}
-        except Exception as e:
+        except Exception:
             pass
         return path, None
 
-    def generate_repo_tree(
-        self, repo_url: str, ref: Optional[str] = None
+    def generate_repo_tree(  # noqa: C901
+        self,
+        repo_url: str,
+        ref: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not self.provider:
             self.provider = get_provider(repo_url, self.token)
@@ -522,7 +562,7 @@ class RepoTreeGenerator:
             ref = self.provider.validate_ref(repo_url, ref)
         except ValueError as e:
             raise e
-        except Exception as e:
+        except Exception:
             ref = 'main'
 
         try:
@@ -560,12 +600,11 @@ class RepoTreeGenerator:
             max_workers = min(
                 multiprocessing.cpu_count(),
                 len(files_to_process),
-                8  # Hard cap for CPU protection
+                8,  # Hard cap for CPU protection
             )
-            
+
             with multiprocessing.Pool(
-                processes=max_workers,
-                maxtasksperchild=50
+                processes=max_workers, maxtasksperchild=50
             ) as pool:
                 results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
@@ -585,7 +624,7 @@ class RepoTreeGenerator:
                                 "language": lang,
                                 "ast": ast_data,
                             }
-                except Exception as e:
+                except Exception:
                     pass
 
         return repo_tree

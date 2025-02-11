@@ -64,7 +64,7 @@ class DataProcessor:
         result = self.transform_data()
         self.save_result(result)
         outer_function()
-        
+
         # Test method return type resolution
         other = self.get_processor()
         other.validate_data()
@@ -255,7 +255,7 @@ def test_generate_repo_tree_python(
     outer_calls = functions["outer_function"]["calls"]
     assert "inner_function" in outer_calls
     assert "process_result" in outer_calls
-    
+
     # Verify process_result calls
     process_calls = functions["process_result"]["calls"]
     assert "validate" in process_calls
@@ -271,10 +271,12 @@ def test_generate_repo_tree_python(
     assert "DataProcessor.transform_data" in process_method["calls"]
     assert "DataProcessor.save_result" in process_method["calls"]
     # assert "outer_function" in process_method["calls"]
-    
+
     # Verify method return type resolution
     assert "DataProcessor.get_processor" in functions
-    assert "DataProcessor.validate_data" in process_method["calls"]  # From other.validate_data()
+    assert (
+        "DataProcessor.validate_data" in process_method["calls"]
+    )  # From other.validate_data()
 
     validate_data_method = functions["DataProcessor.validate_data"]
     # assert "validate" in validate_data_method["calls"]
@@ -283,7 +285,7 @@ def test_generate_repo_tree_python(
     # Verify classes
     classes = ast_data["classes"]
     assert "DataProcessor" in classes
-    
+
     # Verify class line numbers
     data_processor_class = classes["DataProcessor"]
     assert "start_line" in data_processor_class
@@ -411,6 +413,7 @@ def test_same_method_names_different_classes(
     assert ast_data["classes"]["GitLabProvider"]["base_classes"] == ["BaseClass"]
     assert ast_data["classes"]["GitHubProvider"]["base_classes"] == ["BaseClass"]
 
+
 @pytest.mark.skip(reason="Not implemented yet")
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_nested_methods(
@@ -507,10 +510,10 @@ class Processor:
 class DataHandler:
     def __init__(self):
         self.processor = self.get_processor()
-    
+
     def get_processor(self) -> Processor:
         return Processor()
-    
+
     def run(self):
         self.processor.process()
     """
@@ -534,12 +537,16 @@ class DataHandler:
     mock_gitlab.return_value = mock_gitlab_instance
 
     # Setup mock project and file content
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo/")
-    
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=python_content
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo/"
+        )
+
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
-    
+
     # Verify method call resolution
     run_method = ast_data['functions']['DataHandler.run']
     assert 'Processor.process' in run_method['calls']
@@ -581,22 +588,30 @@ class Flask:
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo/")
-    
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=python_content
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo/"
+        )
+
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
-    
+
     create_method = ast_data['functions']['Flask.create_jinja_environment']
-    assert 'Environment.globals_update' in create_method["calls"], \
-        "Method call should be resolved to 'Environment.globals_update'"
-    assert 'Flask.jinja_environment' in create_method["calls"], \
-        "Method call should be resolved to 'Flask.jinja_environment'"
+    assert (
+        'Environment.globals_update' in create_method["calls"]
+    ), "Method call should be resolved to 'Environment.globals_update'"
+    assert (
+        'Flask.jinja_environment' in create_method["calls"]
+    ), "Method call should be resolved to 'Flask.jinja_environment'"
 
     # Verify variable resolution
     assert "rv" in create_method["local_vars"], "Variable should be captured"
-    assert create_method["local_vars"]["rv"] == "Environment", \
-        "Variable should be mapped to Environment class"
+    assert (
+        create_method["local_vars"]["rv"] == "Environment"
+    ), "Variable should be mapped to Environment class"
+
 
 @patch('gitlab.Gitlab')
 def test_instance_variable_call_resolution(mock_gitlab, repo_tree_generator):
@@ -605,7 +620,7 @@ def test_instance_variable_call_resolution(mock_gitlab, repo_tree_generator):
 class RepoTreeGenerator:
     def __init__(self):
         self.call_stack_gen = CallStackGenerator()
-    
+
     def process(self):
         self.call_stack_gen._get_file_content()
 
@@ -631,26 +646,34 @@ class CallStackGenerator:
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo/")
-    
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=python_content
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo/"
+        )
+
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
-    
+
     # Verify RepoTreeGenerator.process calls
     process_method = ast_data['functions']['RepoTreeGenerator.process']
-    assert 'CallStackGenerator._get_file_content' in process_method['calls'], \
-        "Should resolve self.call_stack_gen._get_file_content() to CallStackGenerator._get_file_content"
-    
+    assert (
+        'CallStackGenerator._get_file_content' in process_method['calls']
+    ), "Should resolve self.call_stack_gen._get_file_content() to CallStackGenerator._get_file_content"
+
     # Verify instance variable type resolution
     repo_tree_class = ast_data['classes']['RepoTreeGenerator']
-    assert repo_tree_class['instance_vars']['call_stack_gen'] == 'CallStackGenerator', \
-        "Should detect self.call_stack_gen type as CallStackGenerator"
-    
+    assert (
+        repo_tree_class['instance_vars']['call_stack_gen'] == 'CallStackGenerator'
+    ), "Should detect self.call_stack_gen type as CallStackGenerator"
+
     # Verify call chain resolution in the AST
     call_entries = [c['name'] for c in ast_data['calls']]
-    assert 'CallStackGenerator._get_file_content' in call_entries, \
-        "Call should appear in global calls list"
+    assert (
+        'CallStackGenerator._get_file_content' in call_entries
+    ), "Call should appear in global calls list"
+
 
 def test_save_repo_tree(repo_tree_generator, tmp_path):
     """Test saving repository AST tree to file."""
@@ -731,7 +754,7 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     # Verify function calls
     init_point_calls = functions["init_point"]["calls"]
     assert "validate_point" in init_point_calls
-    
+
     process_shape_calls = functions["process_shape"]["calls"]
     assert "init_point" in process_shape_calls
     assert "calculate_area" in process_shape_calls
@@ -742,7 +765,7 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     assert "Point" in classes
     assert "Rectangle" in classes
     assert "Shape" in classes
-    
+
     # Verify struct line numbers
     for struct_name in ["Point", "Rectangle", "Shape"]:
         struct_class = classes[struct_name]
@@ -750,8 +773,9 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
         assert "end_line" in struct_class
         assert isinstance(struct_class["start_line"], int)
         assert isinstance(struct_class["end_line"], int)
-        assert struct_class["start_line"] <= struct_class["end_line"], \
-            f"Invalid line range for {struct_name} struct"
+        assert (
+            struct_class["start_line"] <= struct_class["end_line"]
+        ), f"Invalid line range for {struct_name} struct"
 
     # Verify imports (#includes)
     imports = ast_data["imports"]
@@ -941,7 +965,8 @@ def test_generate_repo_tree_with_default_ref(
     # Verify default branch is used
     assert repo_tree["metadata"]["ref"] == "main"
     assert "src/main.py" in repo_tree["files"]
-    
+
+
 @patch('gitlab.Gitlab')
 def test_cross_class_method_resolution(mock_gitlab, repo_tree_generator):
     """Test method calls through instance variables resolve to correct class."""
@@ -953,11 +978,11 @@ class Processor:
 class ClassName:
     def __init__(self):
         self.processor = Processor()
-    
+
     def make_something_else(self):
         self.processor.process()
         self._internal_method()
-    
+
     def _internal_method(self):
         pass
 """
@@ -979,20 +1004,27 @@ class ClassName:
     mock_gitlab_instance.projects.get.return_value = mock_project
     mock_gitlab.return_value = mock_gitlab_instance
 
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=python_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
-    
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=python_content
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo"
+        )
+
     file_data = repo_tree['files']['src/main.py']
     ast_data = file_data['ast']
-    
+
     # Verify method calls
     func_info = ast_data['functions']['ClassName.make_something_else']
-    assert 'Processor.process' in func_info['calls'], \
-        "Should resolve processor method to Processor class"
-    assert 'ClassName._internal_method' in func_info['calls'], \
-        "Should resolve self method to original class"
-    
+    assert (
+        'Processor.process' in func_info['calls']
+    ), "Should resolve processor method to Processor class"
+    assert (
+        'ClassName._internal_method' in func_info['calls']
+    ), "Should resolve self method to original class"
+
     # Verify instance variable type tracking
     class_info = ast_data['classes']['ClassName']
-    assert class_info['instance_vars']['processor'] == 'Processor', \
-        "Should detect processor variable type"
+    assert (
+        class_info['instance_vars']['processor'] == 'Processor'
+    ), "Should detect processor variable type"

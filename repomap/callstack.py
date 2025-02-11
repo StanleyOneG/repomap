@@ -249,7 +249,7 @@ class CallStackGenerator:
         lang = self._detect_language(file_url)
         return self._get_function_content(file_url, lang, line_number=line_number)
 
-    def get_function_content_by_name(
+    def get_function_content_by_name(  # noqa: C901
         self,
         ast_tree: str | dict,
         function_name: str,

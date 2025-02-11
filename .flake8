@@ -1,4 +1,4 @@
 [flake8]
 extend-ignore = E501,E402, E203
-exclude = .git,__pycache__,.venv
+exclude = .git,__pycache__,.venv,output
 max-complexity = 8

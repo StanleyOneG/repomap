@@ -187,9 +187,7 @@ def test_generate_call_stack_c(mock_gitlab, generator):
 
     url = "https://example.com/group/project/-/blob/main/src/file.c"
     # Test line inside match function
-    call_stack = generator.generate_call_stack(
-        url, 57
-    )
+    call_stack = generator.generate_call_stack(url, 57)
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'match'
