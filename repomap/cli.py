@@ -30,9 +30,7 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
 
-    parser.add_argument(
-        "repo_url", help="GitLab repository URL", nargs='?'
-    )
+    parser.add_argument("repo_url", help="GitLab repository URL", nargs='?')
 
     parser.add_argument(
         "-t",
