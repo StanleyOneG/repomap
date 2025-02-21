@@ -931,6 +931,69 @@ def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
 
 
 @patch('gitlab.Gitlab')
+@pytest.fixture
+def mock_cpp_content():
+    """Mock C++ file content for testing."""
+    return """
+class GpgManager {
+public:
+    GpgManager();
+    
+    bool run(const std::string &options) {
+        pipe.open();
+        makeCmd(options);
+        return true;
+    }
+
+private:
+    std::string makeCmd(const std::string &options) {
+        return utils::format("gpg %s", options);
+    }
+    
+    Pipe pipe;
+};
+"""
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_content):
+    """Test repository AST tree generation for C++ code."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [{
+        "id": "a1b2c3d4",
+        "name": "gpg.cpp",
+        "type": "blob",
+        "path": "src/gpg.cpp",
+        "mode": "100644",
+    }]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_cpp_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+
+    # Verify C++ parsing results
+    file_data = repo_tree["files"]["src/gpg.cpp"]
+    assert file_data["language"] == "cpp"
+    
+    ast_data = file_data["ast"]
+    assert "GpgManager::GpgManager" in ast_data["functions"]
+    assert "GpgManager::run" in ast_data["functions"]
+    assert "GpgManager::makeCmd" in ast_data["functions"]
+    
+    run_calls = ast_data["functions"]["GpgManager::run"]["calls"]
+    assert "pipe.open" in run_calls
+    assert "GpgManager::makeCmd" in run_calls
+    
+    make_cmd_calls = ast_data["functions"]["GpgManager::makeCmd"]["calls"]
+    assert "utils::format" in make_cmd_calls
+
 def test_generate_repo_tree_with_default_ref(
     mock_gitlab, repo_tree_generator, mock_python_content
 ):

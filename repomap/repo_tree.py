@@ -132,21 +132,54 @@ class RepoTreeGenerator:
                             "end_line": current_node.end_point[0],
                         }
 
+            # Process C++ class definitions
+            if lang == 'cpp' and current_node.type == 'class_specifier':
+                class_name_node = next(
+                    (c for c in current_node.children if c.type == 'type_identifier'),
+                    None
+                )
+                if class_name_node:
+                    current_class = class_name_node.text.decode('utf8')
+                    self._current_classes[current_class] = {
+                        "instance_vars": {},
+                        "methods": [],
+                        "base_classes": [],
+                        "start_line": current_node.start_point[0],
+                        "end_line": current_node.end_point[0],
+                    }
+                    # Process class body children with class context
+                    for child in reversed(current_node.children):
+                        if child.type == 'field_declaration_list':
+                            for grandchild in reversed(child.children):
+                                stack.append((grandchild, current_class))
+                    continue
+
             # Process function/method definitions
             if current_node.type in ('function_definition', 'method_definition'):
                 name_node = None
                 body_node = None
 
                 # Find function name and body
-                for child in current_node.children:
-                    if child.type == 'identifier':
-                        name_node = child
-                        break
-                    elif child.type == 'function_declarator':
-                        for subchild in child.children:
-                            if subchild.type == 'identifier':
-                                name_node = subchild
-                                break
+                if lang == 'cpp':
+                    declarator = next(
+                        (c for c in current_node.children if c.type == 'function_declarator'),
+                        None
+                    )
+                    if declarator:
+                        name_node = next(
+                            (c for c in declarator.children if c.type in ('identifier', 'qualified_identifier')),
+                            None
+                        )
+                else:
+                    for child in current_node.children:
+                        if child.type == 'identifier':
+                            name_node = child
+                            break
+                        elif child.type == 'function_declarator':
+                            for subchild in child.children:
+                                if subchild.type == 'identifier':
+                                    name_node = subchild
+                                    break
 
                 if name_node:
                     func_name = name_node.text.decode('utf8')
@@ -286,11 +319,39 @@ class RepoTreeGenerator:
                 parts = []
                 current_context = current_class
 
+                # Handle C++ qualified identifiers
+                if lang == 'cpp':
+                    if current_node.type == 'qualified_identifier':
+                        current_identifier = current_node
+                        while current_identifier:
+                            if current_identifier.type == 'identifier':
+                                parts.append(current_identifier.text.decode('utf8'))
+                            elif current_identifier.type == 'qualified_identifier':
+                                parts.extend(reversed([
+                                    c.text.decode('utf8') 
+                                    for c in current_identifier.children 
+                                    if c.type == 'identifier'
+                                ]))
+                                break
+                            current_identifier = current_identifier.prev_named_sibling
+                        parts = parts[::-1]
+                        if parts:
+                            calls.append('::'.join(parts))
+                        continue
+
                 # Decompose attribute chain into ordered parts
-                while current_node and current_node.type == 'attribute':
-                    if len(current_node.children) >= 3:
-                        attr_name = current_node.children[2].text.decode('utf8')
-                        parts.append(attr_name)
+                while current_node and current_node.type in ('attribute', 'qualified_identifier', 'field_expression'):
+                    if current_node.type == 'qualified_identifier':
+                        parts.extend(reversed([
+                            c.text.decode('utf8') 
+                            for c in current_node.children 
+                            if c.type == 'identifier'
+                        ]))
+                        break
+                    elif current_node.type == 'attribute':
+                        if len(current_node.children) >= 3:
+                            attr_name = current_node.children[2].text.decode('utf8')
+                            parts.append(attr_name)
                     current_node = current_node.children[0]
 
                 if current_node and current_node.type == 'identifier':
