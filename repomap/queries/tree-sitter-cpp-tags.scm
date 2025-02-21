@@ -23,3 +23,11 @@
 
 (class_specifier
   name: (type_identifier) @name_definition_class) @definition_class
+
+(call_expression
+  function: [
+    (identifier) @name.reference.call
+    (field_expression
+      field: (field_identifier) @name.reference.call)
+    (qualified_identifier) @name.reference.call
+  ])

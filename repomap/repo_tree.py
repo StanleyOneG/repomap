@@ -152,6 +152,9 @@ class RepoTreeGenerator:
                         if child.type == 'field_declaration_list':
                             for grandchild in reversed(child.children):
                                 stack.append((grandchild, current_class))
+                        elif child.type == 'declaration_list':
+                            for grandchild in reversed(child.children):
+                                stack.append((grandchild, current_class))
                     continue
 
             # Process function/method definitions
@@ -319,24 +322,30 @@ class RepoTreeGenerator:
                 parts = []
                 current_context = current_class
 
-                # Handle C++ qualified identifiers
+                # Handle C++ qualified identifiers and field expressions
                 if lang == 'cpp':
                     if current_node.type == 'qualified_identifier':
-                        current_identifier = current_node
-                        while current_identifier:
-                            if current_identifier.type == 'identifier':
-                                parts.append(current_identifier.text.decode('utf8'))
-                            elif current_identifier.type == 'qualified_identifier':
-                                parts.extend(reversed([
-                                    c.text.decode('utf8') 
-                                    for c in current_identifier.children 
-                                    if c.type == 'identifier'
-                                ]))
-                                break
-                            current_identifier = current_identifier.prev_named_sibling
-                        parts = parts[::-1]
+                        parts = [c.text.decode('utf8') for c in current_node.children if c.type == 'identifier']
                         if parts:
                             calls.append('::'.join(parts))
+                        continue
+                    elif current_node.type == 'field_identifier':
+                        method_name = current_node.text.decode('utf8')
+                        if current_class:
+                            calls.append(f"{current_class}::{method_name}")
+                        else:
+                            calls.append(method_name)
+                        continue
+                    elif current_node.type == 'identifier':
+                        func_name = current_node.text.decode('utf8')
+                        if current_class:
+                            # Check if it's a method call within the class
+                            if any(func_name == m for m in self._current_classes.get(current_class, {}).get("methods", [])):
+                                calls.append(f"{current_class}::{func_name}")
+                            else:
+                                calls.append(func_name)
+                        else:
+                            calls.append(func_name)
                         continue
 
                 # Decompose attribute chain into ordered parts
