@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="repomap-suite",
-    version="0.1.1",
+    version="0.1.2",
     author="Stanislav Goncharuk",
     description="A Python library and CLI tool for generating repository maps and analyzing code structure from GitLab and GitHub repositories as Pydantic models.",
     long_description=long_description,
