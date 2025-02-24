@@ -60,11 +60,58 @@ def mock_repo_tree():
     }
 
 
+@pytest.fixture
+def mock_cpp_file_content():
+    """Sample C++ file content for testing."""
+    return '''
+namespace test {
+    class TestClass {
+    public:
+        void method1() {
+            doSomething();
+        }
+        
+        void method2();
+    };
+}
+
+void test::TestClass::method2() {
+    doSomethingElse();
+}
+'''
+
 def test_callstack_generator_import():
     """Test that CallStackGenerator can be imported and instantiated."""
     generator = CallStackGenerator(token="test_token")
     assert generator is not None
     assert generator.token == "test_token"
+
+@patch('repomap.callstack.get_provider')
+def test_get_cpp_function_content_by_line(mock_get_provider, mock_cpp_file_content):
+    """Test getting C++ function content by line number."""
+    # Mock the provider
+    mock_provider = Mock()
+    mock_provider.get_file_content.return_value = mock_cpp_file_content
+    mock_get_provider.return_value = mock_provider
+
+    # Create generator instance
+    generator = CallStackGenerator()
+
+    # Get function content by line - in-class method
+    content1 = generator.get_function_content_by_line(
+        "test.cpp", 
+        line_number=5
+    )
+    assert "void method1()" in content1
+    assert "doSomething();" in content1
+
+    # Get function content by line - out-of-class method
+    content2 = generator.get_function_content_by_line(
+        "test.cpp", 
+        line_number=13
+    )
+    assert "void test::TestClass::method2()" in content2
+    assert "doSomethingElse();" in content2
 
 
 @patch('repomap.callstack.get_provider')

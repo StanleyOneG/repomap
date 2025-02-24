@@ -116,18 +116,42 @@ class CallStackGenerator:
                 end_line = cursor.node.end_point[0]
 
                 if start_line <= line <= end_line:
-                    # For C functions, we need to handle the function_declarator
-                    for child in cursor.node.children:
-                        if child.type == 'function_declarator':
-                            for subchild in child.children:
-                                if subchild.type == 'identifier':
-                                    return (
-                                        subchild.text.decode('utf8'),
-                                        start_line,
-                                        end_line,
-                                    )
-                        elif child.type == 'identifier':
-                            return (child.text.decode('utf8'), start_line, end_line)
+                    # Handle different function declaration patterns
+                    func_name = None
+                    
+                    # For C++ methods and functions
+                    if cursor.node.type == 'function_definition':
+                        declarator = next(
+                            (c for c in cursor.node.children if c.type == 'function_declarator'),
+                            None
+                        )
+                        if declarator:
+                            # Handle qualified identifiers (class methods)
+                            name_node = next(
+                                (c for c in declarator.children if c.type in (
+                                    'identifier', 
+                                    'qualified_identifier',
+                                    'field_identifier'
+                                )),
+                                None
+                            )
+                            if name_node:
+                                func_name = name_node.text.decode('utf8')
+                    
+                    # For C functions and other cases
+                    if not func_name:
+                        for child in cursor.node.children:
+                            if child.type == 'function_declarator':
+                                for subchild in child.children:
+                                    if subchild.type == 'identifier':
+                                        func_name = subchild.text.decode('utf8')
+                                        break
+                            elif child.type == 'identifier':
+                                func_name = child.text.decode('utf8')
+                                break
+
+                    if func_name:
+                        return (func_name, start_line, end_line)
 
             if cursor.goto_first_child():
                 result = visit_node()

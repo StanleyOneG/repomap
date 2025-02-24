@@ -931,6 +931,183 @@ def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
 
 
 @patch('gitlab.Gitlab')
+@pytest.fixture
+def mock_cpp_content():
+    """Mock C++ file content for testing."""
+    return """
+
+namespace mynamespace {
+    namespace crypto {
+
+        AbstractManager::AbstractManager() :
+            m_status(-1)
+        {}
+
+        bool AbstractManager::execute(const std::string &params, const std::vector<char> &data, const std::string &secret) {
+            m_output.clear();
+            m_error.clear();
+            m_status = -1;
+
+            resource::Pipe pipeIn, pipeOut, pipeError, pipeSecret;
+            if(!pipeIn.open() || !pipeOut.open() || !pipeError.open() || (!secret.empty() && !pipeSecret.open())) {
+                message::error("too many open files\n");
+                return false;
+            }
+
+            pid_t pid = ::fork();
+            if(pid == -1) {
+                message::error("failed to fork: %d %s\n", errno, ::strerror(errno));
+                return false;
+            } else if(pid == 0) {
+                struct sigaction sa{};
+                sa.sa_handler = SIG_IGN;
+                sigaction(SIGTSTP, &sa, nullptr);
+
+                if(pipeIn.dup2(resource::Pipe::FdType::Out, ::fileno(stdin)) &&
+                   pipeOut.dup2(resource::Pipe::FdType::In, ::fileno(stdout)) &&
+                   pipeError.dup2(resource::Pipe::FdType::In, ::fileno(stderr)))
+                {
+                    pipeIn.close(resource::Pipe::FdType::In);
+                    pipeOut.close(resource::Pipe::FdType::Out);
+                    pipeError.close(resource::Pipe::FdType::Out);
+
+                    const std::string cmd = buildCommand(params, pipeSecret.fd(resource::Pipe::FdType::Out));
+                    int result = ::execlp("/bin/sh", "/bin/sh", "-c", cmd.c_str(), nullptr);
+                    message::error("child terminated unexpectedly result %d errno %d\n", result, errno);
+                }
+                ::_exit(127);
+            } else {
+                if(!secret.empty()) {
+                    resource::utils::safe_write(pipeSecret.fd(resource::Pipe::FdType::In), secret.data(), secret.length());
+                    resource::utils::safe_write(pipeSecret.fd(resource::Pipe::FdType::In), "\n", 1);
+                }
+                if(!data.empty()) {
+                    resource::utils::safe_write(pipeIn.fd(resource::Pipe::FdType::In), data.data(), data.size());
+                }
+                pipeIn.close();
+                pipeOut.close(resource::Pipe::FdType::In);
+                pipeError.close(resource::Pipe::FdType::In);
+
+                ::fcntl(pipeOut.fd(resource::Pipe::FdType::Out), F_SETFL, O_NONBLOCK);
+                ::fcntl(pipeError.fd(resource::Pipe::FdType::Out), F_SETFL, O_NONBLOCK);
+
+                char buffer[1024];
+                while(true) {
+                    bool validOut = pipeOut.isValid(resource::Pipe::FdType::Out);
+                    bool validError = pipeError.isValid(resource::Pipe::FdType::Out);
+                    if(!validOut && !validError) {
+                        break;
+                    }
+                    pollfd fds[2];
+                    int idx = 0;
+                    if(validOut) {
+                        fds[idx].fd = pipeOut.fd(resource::Pipe::FdType::Out);
+                        fds[idx].events = POLLIN | POLLHUP;
+                        idx++;
+                    }
+                    if(validError) {
+                        fds[idx].fd = pipeError.fd(resource::Pipe::FdType::Out);
+                        fds[idx].events = POLLIN | POLLHUP;
+                        idx++;
+                    }
+                    int ret = ::poll(fds, idx, -1);
+                    if(ret < 0)
+                        continue;
+                    idx = 0;
+                    if(validOut && (fds[idx++].revents & (POLLIN | POLLHUP))) {
+                        ssize_t size = resource::utils::safe_read(pipeOut.fd(resource::Pipe::FdType::Out), buffer, sizeof(buffer));
+                        if(size <= 0) {
+                            pipeOut.close(resource::Pipe::FdType::Out);
+                        } else {
+                            m_output.insert(m_output.end(), buffer, buffer + size);
+                        }
+                    }
+                    if(validError && (fds[idx].revents & (POLLIN | POLLHUP))) {
+                        ssize_t size = resource::utils::safe_read(pipeError.fd(resource::Pipe::FdType::Out), buffer, sizeof(buffer));
+                        if(size <= 0) {
+                            pipeError.close(resource::Pipe::FdType::Out);
+                        } else {
+                            m_error.append(buffer, size);
+                        }
+                    }
+                }
+            }
+
+            int status;
+            if(resource::utils::safe_waitpid(pid, &status, 0) == pid) {
+                if(WIFEXITED(status)) {
+                    m_status = WEXITSTATUS(status);
+                }
+            }
+            return m_status == 0;
+        }
+
+        std::string AbstractManager::getError() const {
+            return m_error;
+        }
+
+        std::vector<char> AbstractManager::getOutput() const {
+            return m_output;
+        }
+
+        int AbstractManager::getStatus() const {
+            return m_status;
+        }
+
+        std::string AbstractManager::buildCommand(const std::string &params, int fdSecret) {
+            std::string cmd = "LANGUAGE=C command --no-greeting --batch";
+            if(fdSecret != -1) {
+                cmd += utils::safe_format(" --secret-fd %d", fdSecret);
+            }
+            return cmd + params + (fdSecret != -1 ? " && commandconf --reload agent" : "");
+        }
+    }
+}
+"""
+
+@patch('gitlab.Gitlab')
+def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_content):
+    """Test repository AST tree generation for C++ code."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [{
+        "id": "a1b2c3d4",
+        "name": "abstract.cpp",
+        "type": "blob",
+        "path": "src/abstract.cpp",
+        "mode": "100644",
+    }]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_cpp_content):
+        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+
+    # Verify C++ parsing results
+    file_data = repo_tree["files"]["src/abstract.cpp"]
+    assert file_data["language"] == "cpp"
+    
+    ast_data = file_data["ast"]
+    # Check for constructors and methods in the AST
+    assert "AbstractManager::AbstractManager" in ast_data["functions"]
+    assert "AbstractManager::execute" in ast_data["functions"]
+    assert "AbstractManager::buildCommand" in ast_data["functions"]
+    
+    execute_calls = ast_data["functions"]["AbstractManager::execute"]["calls"]
+    # Verify that at least one call to open (e.g., pipeIn.open) is recorded and buildCommand is called
+    assert any("open" in call for call in execute_calls)
+    
+    build_command_calls = ast_data["functions"]["AbstractManager::buildCommand"]["calls"]
+    # Verify that the call to the formatting utility is recorded
+    assert any("safe_format" in call for call in build_command_calls)
+
+@patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_default_ref(
     mock_gitlab, repo_tree_generator, mock_python_content
 ):
