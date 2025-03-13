@@ -1065,6 +1065,7 @@ namespace mynamespace {
 }
 """
 
+
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_content):
     """Test repository AST tree generation for C++ code."""
@@ -1072,13 +1073,15 @@ def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_conte
     mock_project = Mock()
     mock_project.path_with_namespace = "group/repo"
     mock_project.default_branch = "main"
-    mock_project.repository_tree.return_value = [{
-        "id": "a1b2c3d4",
-        "name": "abstract.cpp",
-        "type": "blob",
-        "path": "src/abstract.cpp",
-        "mode": "100644",
-    }]
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "abstract.cpp",
+            "type": "blob",
+            "path": "src/abstract.cpp",
+            "mode": "100644",
+        }
+    ]
 
     # Setup mock GitLab instance
     mock_gitlab_instance = Mock()
@@ -1086,26 +1089,33 @@ def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_conte
     mock_gitlab.return_value = mock_gitlab_instance
 
     # Mock file content fetching
-    with patch.object(repo_tree_generator, '_get_file_content', return_value=mock_cpp_content):
-        repo_tree = repo_tree_generator.generate_repo_tree("https://example.com/group/repo")
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=mock_cpp_content
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo"
+        )
 
     # Verify C++ parsing results
     file_data = repo_tree["files"]["src/abstract.cpp"]
     assert file_data["language"] == "cpp"
-    
+
     ast_data = file_data["ast"]
     # Check for constructors and methods in the AST
     assert "AbstractManager::AbstractManager" in ast_data["functions"]
     assert "AbstractManager::execute" in ast_data["functions"]
     assert "AbstractManager::buildCommand" in ast_data["functions"]
-    
+
     execute_calls = ast_data["functions"]["AbstractManager::execute"]["calls"]
     # Verify that at least one call to open (e.g., pipeIn.open) is recorded and buildCommand is called
     assert any("open" in call for call in execute_calls)
-    
-    build_command_calls = ast_data["functions"]["AbstractManager::buildCommand"]["calls"]
+
+    build_command_calls = ast_data["functions"]["AbstractManager::buildCommand"][
+        "calls"
+    ]
     # Verify that the call to the formatting utility is recorded
     assert any("safe_format" in call for call in build_command_calls)
+
 
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_default_ref(

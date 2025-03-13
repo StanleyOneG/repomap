@@ -70,7 +70,7 @@ namespace test {
         void method1() {
             doSomething();
         }
-        
+
         void method2();
     };
 }
@@ -80,16 +80,17 @@ void test::TestClass::method2() {
 }
 '''
 
+
 @pytest.fixture
 def mock_c_pointer_file_content():
     """Sample C file content with pointer in function name for testing."""
     return '''
 static struct sec_request_el
 *sec_alg_alloc_and_fill_el(struct sec_bd_info *template, int encrypt,
-			   int el_size, bool different_dest,
-			   struct scatterlist *sgl_in, int n_ents_in,
-			   struct scatterlist *sgl_out, int n_ents_out,
-			   struct sec_dev_info *info, gfp_t gfp)
+               int el_size, bool different_dest,
+               struct scatterlist *sgl_in, int n_ents_in,
+               struct scatterlist *sgl_out, int n_ents_out,
+               struct sec_dev_info *info, gfp_t gfp)
 {
     struct sec_request_el *el;
     el = kzalloc(sizeof(*el), gfp);
@@ -109,11 +110,13 @@ char *parse_string(const char *input) {
 }
 '''
 
+
 def test_callstack_generator_import():
     """Test that CallStackGenerator can be imported and instantiated."""
     generator = CallStackGenerator(token="test_token")
     assert generator is not None
     assert generator.token == "test_token"
+
 
 @patch('repomap.callstack.get_provider')
 def test_get_cpp_function_content_by_line(mock_get_provider, mock_cpp_file_content):
@@ -127,24 +130,20 @@ def test_get_cpp_function_content_by_line(mock_get_provider, mock_cpp_file_conte
     generator = CallStackGenerator()
 
     # Get function content by line - in-class method
-    content1 = generator.get_function_content_by_line(
-        "test.cpp", 
-        line_number=5
-    )
+    content1 = generator.get_function_content_by_line("test.cpp", line_number=5)
     assert "void method1()" in content1
     assert "doSomething();" in content1
 
     # Get function content by line - out-of-class method
-    content2 = generator.get_function_content_by_line(
-        "test.cpp", 
-        line_number=13
-    )
+    content2 = generator.get_function_content_by_line("test.cpp", line_number=13)
     assert "void test::TestClass::method2()" in content2
     assert "doSomethingElse();" in content2
 
 
 @patch('repomap.callstack.get_provider')
-def test_get_c_pointer_function_content_by_line(mock_get_provider, mock_c_pointer_file_content):
+def test_get_c_pointer_function_content_by_line(
+    mock_get_provider, mock_c_pointer_file_content
+):
     """Test getting C function with pointer in name by line number."""
     # Mock the provider
     mock_provider = Mock()
@@ -155,35 +154,23 @@ def test_get_c_pointer_function_content_by_line(mock_get_provider, mock_c_pointe
     generator = CallStackGenerator()
 
     # Get function content by line - function with pointer in name (pointer on separate line)
-    content = generator.get_function_content_by_line(
-        "test.c", 
-        line_number=5
-    )
+    content = generator.get_function_content_by_line("test.c", line_number=5)
     assert "*sec_alg_alloc_and_fill_el" in content
     assert "struct sec_request_el" in content
     assert "return el;" in content
 
     # Get regular function content to ensure we didn't break existing functionality
-    content2 = generator.get_function_content_by_line(
-        "test.c", 
-        line_number=14
-    )
+    content2 = generator.get_function_content_by_line("test.c", line_number=14)
     assert "int regular_function(int param)" in content2
     assert "return param * 2;" in content2
-    
+
     # Test function with pointer in return type (void*)
-    content3 = generator.get_function_content_by_line(
-        "test.c", 
-        line_number=18
-    )
+    content3 = generator.get_function_content_by_line("test.c", line_number=18)
     assert "void* get_memory" in content3
     assert "return malloc(size);" in content3
-    
+
     # Test function with pointer in return type (char *)
-    content4 = generator.get_function_content_by_line(
-        "test.c", 
-        line_number=22
-    )
+    content4 = generator.get_function_content_by_line("test.c", line_number=22)
     assert "char *parse_string" in content4
     assert "return strdup(input);" in content4
 

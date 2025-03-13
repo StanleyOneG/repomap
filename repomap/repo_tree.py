@@ -136,7 +136,7 @@ class RepoTreeGenerator:
             if lang == 'cpp' and current_node.type == 'class_specifier':
                 class_name_node = next(
                     (c for c in current_node.children if c.type == 'type_identifier'),
-                    None
+                    None,
                 )
                 if class_name_node:
                     current_class = class_name_node.text.decode('utf8')
@@ -165,13 +165,21 @@ class RepoTreeGenerator:
                 # Find function name and body
                 if lang == 'cpp':
                     declarator = next(
-                        (c for c in current_node.children if c.type == 'function_declarator'),
-                        None
+                        (
+                            c
+                            for c in current_node.children
+                            if c.type == 'function_declarator'
+                        ),
+                        None,
                     )
                     if declarator:
                         name_node = next(
-                            (c for c in declarator.children if c.type in ('identifier', 'qualified_identifier')),
-                            None
+                            (
+                                c
+                                for c in declarator.children
+                                if c.type in ('identifier', 'qualified_identifier')
+                            ),
+                            None,
                         )
                 else:
                     for child in current_node.children:
@@ -325,7 +333,11 @@ class RepoTreeGenerator:
                 # Handle C++ qualified identifiers and field expressions
                 if lang == 'cpp':
                     if current_node.type == 'qualified_identifier':
-                        parts = [c.text.decode('utf8') for c in current_node.children if c.type == 'identifier']
+                        parts = [
+                            c.text.decode('utf8')
+                            for c in current_node.children
+                            if c.type == 'identifier'
+                        ]
                         if parts:
                             calls.append('::'.join(parts))
                         continue
@@ -340,7 +352,12 @@ class RepoTreeGenerator:
                         func_name = current_node.text.decode('utf8')
                         if current_class:
                             # Check if it's a method call within the class
-                            if any(func_name == m for m in self._current_classes.get(current_class, {}).get("methods", [])):
+                            if any(
+                                func_name == m
+                                for m in self._current_classes.get(
+                                    current_class, {}
+                                ).get("methods", [])
+                            ):
                                 calls.append(f"{current_class}::{func_name}")
                             else:
                                 calls.append(func_name)
@@ -349,13 +366,21 @@ class RepoTreeGenerator:
                         continue
 
                 # Decompose attribute chain into ordered parts
-                while current_node and current_node.type in ('attribute', 'qualified_identifier', 'field_expression'):
+                while current_node and current_node.type in (
+                    'attribute',
+                    'qualified_identifier',
+                    'field_expression',
+                ):
                     if current_node.type == 'qualified_identifier':
-                        parts.extend(reversed([
-                            c.text.decode('utf8') 
-                            for c in current_node.children 
-                            if c.type == 'identifier'
-                        ]))
+                        parts.extend(
+                            reversed(
+                                [
+                                    c.text.decode('utf8')
+                                    for c in current_node.children
+                                    if c.type == 'identifier'
+                                ]
+                            )
+                        )
                         break
                     elif current_node.type == 'attribute':
                         if len(current_node.children) >= 3:
