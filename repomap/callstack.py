@@ -118,37 +118,82 @@ class CallStackGenerator:
                 if start_line <= line <= end_line:
                     # Handle different function declaration patterns
                     func_name = None
-                    
+
                     # For C++ methods and functions
                     if cursor.node.type == 'function_definition':
                         declarator = next(
-                            (c for c in cursor.node.children if c.type == 'function_declarator'),
-                            None
+                            (
+                                c
+                                for c in cursor.node.children
+                                if c.type == 'function_declarator'
+                            ),
+                            None,
                         )
                         if declarator:
                             # Handle qualified identifiers (class methods)
                             name_node = next(
-                                (c for c in declarator.children if c.type in (
-                                    'identifier', 
-                                    'qualified_identifier',
-                                    'field_identifier'
-                                )),
-                                None
+                                (
+                                    c
+                                    for c in declarator.children
+                                    if c.type
+                                    in (
+                                        'identifier',
+                                        'qualified_identifier',
+                                        'field_identifier',
+                                    )
+                                ),
+                                None,
                             )
                             if name_node:
                                 func_name = name_node.text.decode('utf8')
-                    
+
                     # For C functions and other cases
                     if not func_name:
-                        for child in cursor.node.children:
-                            if child.type == 'function_declarator':
-                                for subchild in child.children:
-                                    if subchild.type == 'identifier':
-                                        func_name = subchild.text.decode('utf8')
-                                        break
-                            elif child.type == 'identifier':
-                                func_name = child.text.decode('utf8')
-                                break
+                        # Get the full text of the function definition for C functions with pointers
+                        full_func_text = cursor.node.text.decode('utf8')
+                        lines = full_func_text.split('\n')
+
+                        # For C functions with pointer return types (like "*func_name")
+                        if len(lines) > 0:
+                            # Extract the function declaration line(s)
+                            declaration = '\n'.join(
+                                lines[: min(3, len(lines))]
+                            )  # Take first few lines
+
+                            # Find opening parenthesis of parameters
+                            paren_pos = declaration.find('(')
+                            if paren_pos > 0:
+                                # Get everything before the parenthesis
+                                before_paren = declaration[:paren_pos].strip()
+
+                                # Handle pointer functions like "*func_name" or "type *func_name"
+                                if '*' in before_paren:
+                                    # The function name is typically the last identifier before the parenthesis
+                                    # It might have a * prefix or a * might be between type and name
+                                    parts = before_paren.replace('*', ' * ').split()
+
+                                    # Find the last part that's not a pointer symbol
+                                    for i in range(len(parts) - 1, -1, -1):
+                                        if parts[i] != '*':
+                                            func_name = parts[i]
+                                            break
+                                else:
+                                    # For regular functions, the name is the last part
+                                    parts = before_paren.split()
+                                    if parts:
+                                        func_name = parts[-1]
+
+                        # Fallback to the original method if we couldn't extract the name
+                        if not func_name:
+                            for child in cursor.node.children:
+                                if child.type == 'function_declarator':
+                                    for subchild in child.children:
+                                        if subchild.type == 'identifier':
+                                            func_name = subchild.text.decode('utf8')
+                                            break
+                                elif child.type == 'identifier':
+                                    func_name = child.text.decode('utf8')
+                                    break
 
                     if func_name:
                         return (func_name, start_line, end_line)
