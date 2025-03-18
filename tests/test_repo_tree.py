@@ -195,6 +195,16 @@ static void transform_shape(Shape *shape) {
         shape->data.point.y *= 2;
     }
 }
+
+static Shape *create_shape(int type) {
+    Shape *shape = malloc(sizeof(Shape));
+    shape->type = type;
+    return shape;
+}
+
+void *allocate_memory(size_t size) {
+    return malloc(size);
+}
 """
 
 
@@ -750,6 +760,10 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     assert "calculate_area" in functions
     assert "process_shape" in functions
     assert "transform_shape" in functions
+    
+    # Verify pointer functions are captured
+    assert "create_shape" in functions, "Pointer function create_shape not found"
+    assert "allocate_memory" in functions, "Pointer function allocate_memory not found"
 
     # Verify function calls
     init_point_calls = functions["init_point"]["calls"]
@@ -783,6 +797,119 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
     assert "stdlib.h" in imports
     assert "local_header.h" in imports
 
+
+@pytest.fixture
+def mock_c_pointer_functions():
+    """Mock C file content with pointer functions for testing."""
+    return """
+#include <stdio.h>
+#include <stdlib.h>
+
+struct node {
+    int data;
+    struct node *next;
+};
+
+typedef struct node Node;
+
+// Function that returns a pointer
+Node *create_node(int data) {
+    Node *new_node = (Node *)malloc(sizeof(Node));
+    new_node->data = data;
+    new_node->next = NULL;
+    return new_node;
+}
+
+// Function with pointer in parameter and void return
+void delete_node(Node **head, int data) {
+    Node *temp = *head, *prev = NULL;
+    
+    if (temp != NULL && temp->data == data) {
+        *head = temp->next;
+        free(temp);
+        return;
+    }
+    
+    while (temp != NULL && temp->data != data) {
+        prev = temp;
+        temp = temp->next;
+    }
+    
+    if (temp == NULL) return;
+    
+    prev->next = temp->next;
+    free(temp);
+}
+
+// Function with complex pointer declaration
+void **allocate_matrix(int rows, int cols, size_t elem_size) {
+    void **matrix = malloc(rows * sizeof(void *));
+    for (int i = 0; i < rows; i++) {
+        matrix[i] = malloc(cols * elem_size);
+    }
+    return matrix;
+}
+
+// Function that takes function pointer as parameter
+int process_with_callback(int data, int (*callback)(int)) {
+    return callback(data);
+}
+
+// Function pointer typedef
+typedef int (*operation_func)(int, int);
+
+// Function that returns function pointer
+operation_func get_operation(char op) {
+    switch(op) {
+        case '+': return &add;
+        case '-': return &subtract;
+        default: return NULL;
+    }
+}
+"""
+
+@patch('gitlab.Gitlab')
+def test_c_pointer_functions(mock_gitlab, repo_tree_generator, mock_c_pointer_functions):
+    """Test repository AST tree generation for C code with pointer functions."""
+    # Setup mock project
+    mock_project = Mock()
+    mock_project.path_with_namespace = "group/repo"
+    mock_project.default_branch = "main"
+    mock_project.repository_tree.return_value = [
+        {
+            "id": "a1b2c3d4",
+            "name": "pointers.c",
+            "type": "blob",
+            "path": "src/pointers.c",
+            "mode": "100644",
+        }
+    ]
+
+    # Setup mock GitLab instance
+    mock_gitlab_instance = Mock()
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    # Mock file content fetching
+    with patch.object(
+        repo_tree_generator, '_get_file_content', return_value=mock_c_pointer_functions
+    ):
+        repo_tree = repo_tree_generator.generate_repo_tree(
+            "https://example.com/group/repo"
+        )
+
+    # Verify repository tree structure
+    assert "src/pointers.c" in repo_tree["files"]
+    file_data = repo_tree["files"]["src/pointers.c"]
+    assert file_data["language"] == "c"
+
+    # Verify functions with pointers are captured
+    functions = file_data["ast"]["functions"]
+    assert "create_node" in functions, "Function returning pointer not found"
+    assert "delete_node" in functions, "Function with pointer parameter not found"
+    assert "allocate_matrix" in functions, "Function with complex pointer declaration not found"
+    assert "process_with_callback" in functions, "Function with function pointer parameter not found"
+    assert "get_operation" in functions, "Function returning function pointer not found"
 
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_unsupported_files(mock_gitlab, repo_tree_generator):

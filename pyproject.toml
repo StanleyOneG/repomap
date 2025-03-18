@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "repomap-suite"
-version = "0.1.3"
+version = "0.1.4"
 description = ""
 authors = ["Stanislav <goncharuk.sm@yandex.ru>"]
 readme = "README.md"

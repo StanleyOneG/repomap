@@ -182,6 +182,7 @@ class RepoTreeGenerator:
                             None,
                         )
                 else:
+                    # First try to find the function name directly
                     for child in current_node.children:
                         if child.type == 'identifier':
                             name_node = child
@@ -191,6 +192,44 @@ class RepoTreeGenerator:
                                 if subchild.type == 'identifier':
                                     name_node = subchild
                                     break
+                    
+                    # If name_node is still not found, handle C functions with pointer return types
+                    if not name_node and lang == 'c':
+                        # Get the full text of the function definition for C functions with pointers
+                        full_func_text = current_node.text.decode('utf8')
+                        lines = full_func_text.split('\n')
+                        
+                        # For C functions with pointer return types (like "*func_name")
+                        if len(lines) > 0:
+                            # Extract the function declaration line(s)
+                            declaration = '\n'.join(
+                                lines[: min(3, len(lines))]
+                            )  # Take first few lines
+                            
+                            # Find opening parenthesis of parameters
+                            paren_pos = declaration.find('(')
+                            if paren_pos > 0:
+                                # Get everything before the parenthesis
+                                before_paren = declaration[:paren_pos].strip()
+                                
+                                # Handle pointer functions like "*func_name" or "type *func_name"
+                                if '*' in before_paren:
+                                    # The function name is typically the last identifier before the parenthesis
+                                    # It might have a * prefix or a * might be between type and name
+                                    parts = before_paren.replace('*', ' * ').split()
+                                    
+                                    # Find the last part that's not a pointer symbol
+                                    for i in range(len(parts) - 1, -1, -1):
+                                        if parts[i] != '*':
+                                            func_name = parts[i]
+                                            name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                                            break
+                                else:
+                                    # For regular functions, the name is the last part
+                                    parts = before_paren.split()
+                                    if parts:
+                                        func_name = parts[-1]
+                                        name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
 
                 if name_node:
                     func_name = name_node.text.decode('utf8')
