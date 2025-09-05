@@ -137,12 +137,11 @@ def main() -> Optional[int]:  # noqa: C901
     Returns:
         Optional[int]: Exit code (0 for success, non-zero for error)
     """
-    args = parse_args()
-
-    log_level = 'DEBUG' if args.verbose else 'INFO'
-    setup_logging(log_level)
-
     try:
+        args = parse_args()
+
+        log_level = 'DEBUG' if args.verbose else 'INFO'
+        setup_logging(log_level)
         if args.repo_tree:
             # Generate repository AST tree
             use_local_clone = not args.no_local_clone
@@ -263,7 +262,9 @@ def main() -> Optional[int]:  # noqa: C901
         return 130
 
     except Exception as e:
-        logger.error(f"Error: {e}", exc_info=args.verbose)
+        # Check if args is defined, otherwise use default verbose=False
+        verbose = getattr(locals().get('args', None), 'verbose', False)
+        logger.error(f"Error: {e}", exc_info=verbose)
         return 1
 
 

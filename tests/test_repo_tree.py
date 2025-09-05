@@ -36,8 +36,7 @@ def repo_tree_generator():
 
 @pytest.fixture
 def multi_lang_repo_tree_generator():
-    """Create a RepoTreeGenerator instance for testing with mocked tree-sitter for performance."""
-    from unittest.mock import MagicMock
+    """Create a RepoTreeGenerator instance for testing with working tree-sitter parsers."""
     from repomap.callstack import CallStackGenerator
     
     with patch('gitlab.Gitlab') as mock_gitlab:
@@ -51,19 +50,36 @@ def multi_lang_repo_tree_generator():
         # Disable multiprocessing for testing to avoid pickling issues with mocks
         generator = RepoTreeGenerator(use_multiprocessing=False)
         
-        # Mock tree-sitter for better performance while maintaining functionality
+        # Use real CallStackGenerator but limit to only required languages for performance
+        # We'll initialize all languages since tests need them, but this is still much faster
+        # than full repo processing
         generator.call_stack_gen = CallStackGenerator(token=generator.token)
         
-        # Replace the parsers with mocked versions that return realistic structures
-        mock_tree = MagicMock()
-        mock_tree.root_node = MagicMock()
+        generator.parsers = generator.call_stack_gen.parsers
+        generator.queries = generator.call_stack_gen.queries
         
-        for lang in ['c', 'cpp', 'go']:
-            mock_parser = MagicMock()
-            mock_parser.parse.return_value = mock_tree
-            generator.call_stack_gen.parsers[lang] = mock_parser
-            generator.call_stack_gen.queries[lang] = MagicMock()
-            
+        return generator
+
+
+@pytest.fixture
+def api_only_repo_tree_generator():
+    """Create a RepoTreeGenerator instance for testing with API-only access (no local cloning)."""
+    from repomap.callstack import CallStackGenerator
+    
+    with patch('gitlab.Gitlab') as mock_gitlab:
+        # Create mock instance with projects attribute
+        mock_gl = Mock()
+        mock_project = Mock()
+        mock_project.default_branch = 'main'
+        mock_gl.projects.get.return_value = mock_project
+        mock_gitlab.return_value = mock_gl
+
+        # Disable multiprocessing and local cloning for testing
+        generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
+        
+        # Use real CallStackGenerator for parsing
+        generator.call_stack_gen = CallStackGenerator(token=generator.token)
+        
         generator.parsers = generator.call_stack_gen.parsers
         generator.queries = generator.call_stack_gen.queries
         
@@ -1160,7 +1176,7 @@ def test_generate_repo_tree_with_custom_ref(
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
+def test_generate_repo_tree_with_invalid_ref(mock_gitlab, api_only_repo_tree_generator):
     """Test repository AST tree generation with invalid ref."""
     # Setup mock project with invalid ref
     mock_project = Mock()
@@ -1194,7 +1210,7 @@ def test_generate_repo_tree_with_invalid_ref(mock_gitlab, repo_tree_generator):
     with pytest.raises(
         ValueError, match="No ref found in repository by name: invalid-ref"
     ):
-        repo_tree_generator.generate_repo_tree(
+        api_only_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo", ref='invalid-ref'
         )
 
@@ -1489,7 +1505,7 @@ class ClassName:
 class TestRepoTreeCommitHash:
     """Tests for repository tree commit hash functionality."""
 
-    @patch('repomap.providers.get_provider')
+    @patch('repomap.repo_tree.get_provider')
     @patch.object(RepoTreeGenerator, '_get_file_content')
     def test_generate_repo_tree_includes_commit_hash(self, mock_get_content, mock_get_provider):
         """Test that generate_repo_tree includes commit hash in metadata."""
@@ -1507,7 +1523,7 @@ class TestRepoTreeCommitHash:
         mock_get_provider.return_value = mock_provider
         mock_get_content.return_value = 'print("hello")'
 
-        generator = RepoTreeGenerator(use_multiprocessing=False)
+        generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
         repo_tree = generator.generate_repo_tree('https://github.com/owner/repo')
 
         # Verify commit hash is included in metadata
@@ -1519,7 +1535,7 @@ class TestRepoTreeCommitHash:
     @patch('repomap.providers.get_provider')
     def test_is_repo_tree_up_to_date_no_file(self, mock_get_provider):
         """Test is_repo_tree_up_to_date returns False when no file exists."""
-        generator = RepoTreeGenerator()
+        generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
             'https://github.com/owner/repo', 
             'main', 
@@ -1527,7 +1543,7 @@ class TestRepoTreeCommitHash:
         )
         assert result is False
 
-    @patch('repomap.providers.get_provider')
+    @patch('repomap.repo_tree.get_provider')
     def test_is_repo_tree_up_to_date_same_hash(self, mock_get_provider, tmp_path):
         """Test is_repo_tree_up_to_date returns True when commit hashes match."""
         # Create existing repo tree file
@@ -1549,7 +1565,7 @@ class TestRepoTreeCommitHash:
         mock_provider.get_last_commit_hash.return_value = 'same123hash'
         mock_get_provider.return_value = mock_provider
 
-        generator = RepoTreeGenerator()
+        generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
             'https://github.com/owner/repo',
             'main',
@@ -1579,7 +1595,7 @@ class TestRepoTreeCommitHash:
         mock_provider.get_last_commit_hash.return_value = 'new456hash'
         mock_get_provider.return_value = mock_provider
 
-        generator = RepoTreeGenerator()
+        generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
             'https://github.com/owner/repo',
             'main',
@@ -1603,7 +1619,7 @@ class TestRepoTreeCommitHash:
         with open(repo_tree_file, 'w') as f:
             json.dump(existing_tree, f)
 
-        generator = RepoTreeGenerator()
+        generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
             'https://github.com/owner/repo',
             'main',
@@ -1626,7 +1642,7 @@ class TestRepoTreeCommitHash:
         with open(repo_tree_file, 'w') as f:
             json.dump(existing_tree, f)
 
-        generator = RepoTreeGenerator()
+        generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
             'https://github.com/owner/repo',
             'main',
@@ -1635,7 +1651,7 @@ class TestRepoTreeCommitHash:
         assert result is False
 
     @patch('builtins.print')  # Mock print to suppress output
-    @patch('repomap.providers.get_provider')
+    @patch('repomap.repo_tree.get_provider')
     def test_generate_repo_tree_if_needed_up_to_date(self, mock_get_provider, mock_print, tmp_path):
         """Test generate_repo_tree_if_needed loads existing tree when up to date."""
         # Create existing repo tree file
@@ -1657,7 +1673,7 @@ class TestRepoTreeCommitHash:
         mock_provider.get_last_commit_hash.return_value = 'same123hash'
         mock_get_provider.return_value = mock_provider
 
-        generator = RepoTreeGenerator(use_multiprocessing=False)
+        generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
         
         # Mock generate_repo_tree so we can verify it wasn't called
         with patch.object(generator, 'generate_repo_tree') as mock_generate:
@@ -1672,7 +1688,7 @@ class TestRepoTreeCommitHash:
         assert result == existing_tree
 
     @patch('builtins.print')  # Mock print to suppress output
-    @patch('repomap.providers.get_provider')
+    @patch('repomap.repo_tree.get_provider')
     @patch.object(RepoTreeGenerator, '_get_file_content')
     def test_generate_repo_tree_if_needed_outdated(self, mock_get_content, mock_get_provider, mock_print, tmp_path):
         """Test generate_repo_tree_if_needed generates new tree when outdated."""
@@ -1697,7 +1713,7 @@ class TestRepoTreeCommitHash:
         mock_get_provider.return_value = mock_provider
         mock_get_content.return_value = 'print("hello")'
 
-        generator = RepoTreeGenerator(use_multiprocessing=False)
+        generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
         result = generator.generate_repo_tree_if_needed(
             'https://github.com/owner/repo',
             'main',
