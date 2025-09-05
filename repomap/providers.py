@@ -59,6 +59,19 @@ class RepoProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_last_commit_hash(self, repo_url: str, ref: Optional[str] = None) -> Optional[str]:
+        """Get the last commit hash for the given repository and reference.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Optional[str]: Last commit hash or None if failed
+        """
+        pass
+
 
 class GitLabProvider(RepoProvider):
     """GitLab repository provider implementation."""
@@ -236,6 +249,33 @@ class GitLabProvider(RepoProvider):
                         raise ValueError(f"No ref found in repository by name: {ref}")
         return project.default_branch
 
+    def get_last_commit_hash(self, repo_url: str, ref: Optional[str] = None) -> Optional[str]:
+        """Get the last commit hash for the given repository and reference.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Optional[str]: Last commit hash or None if failed
+        """
+        try:
+            self._ensure_gitlab_client(repo_url)
+            group_path, project_name = self._get_project_parts(repo_url)
+            project_path = f"{group_path}/{project_name}"
+            project = self.gl.projects.get(project_path)
+            
+            if not ref:
+                ref = project.default_branch
+            
+            # Get the latest commit for the reference
+            commits = project.commits.list(ref_name=ref, per_page=1)
+            if commits:
+                return commits[0].id
+        except Exception as e:
+            print(f"Failed to get last commit hash from GitLab: {e}")
+        return None
+
 
 class GitHubProvider(RepoProvider):
     """GitHub repository provider implementation."""
@@ -373,6 +413,43 @@ class GitHubProvider(RepoProvider):
                     except Exception:
                         raise ValueError(f"No ref found in repository by name: {ref}")
         return repo.default_branch
+
+    def get_last_commit_hash(self, repo_url: str, ref: Optional[str] = None) -> Optional[str]:
+        """Get the last commit hash for the given repository and reference.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Optional[str]: Last commit hash or None if failed
+        """
+        try:
+            repo = self._get_repo_from_url(repo_url)
+            
+            if not ref:
+                ref = repo.default_branch
+            
+            # Get the latest commit for the reference
+            try:
+                # Try to get branch first
+                branch = repo.get_branch(ref)
+                return branch.commit.sha
+            except Exception:
+                try:
+                    # Try to get tag
+                    tag = repo.get_tag(ref)
+                    return tag.commit.sha
+                except Exception:
+                    try:
+                        # Try to get commit directly
+                        commit = repo.get_commit(ref)
+                        return commit.sha
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"Failed to get last commit hash from GitHub: {e}")
+        return None
 
 
 class LocalRepoProvider(RepoProvider):
@@ -669,6 +746,38 @@ class LocalRepoProvider(RepoProvider):
             # Fallback to API for validation
             provider = _get_api_provider(repo_url, self.token)
             return provider.validate_ref(repo_url, ref)
+
+    def get_last_commit_hash(self, repo_url: str, ref: Optional[str] = None) -> Optional[str]:
+        """Get the last commit hash for the given repository and reference.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Optional[str]: Last commit hash or None if failed
+        """
+        # ALWAYS try API first for speed (key optimization!)
+        try:
+            provider = _get_api_provider(repo_url, self.token)
+            commit_hash = provider.get_last_commit_hash(repo_url, ref)
+            if commit_hash:
+                return commit_hash
+        except Exception as e:
+            print(f"Failed to get commit hash via API: {e}")
+
+        # Only fall back to local cloning if API fails AND local cloning is enabled
+        if self.use_local_clone:
+            try:
+                clone_path = self._clone_repo(repo_url, ref)
+                repo = git.Repo(clone_path)
+                
+                # Get the current HEAD commit hash
+                return repo.head.commit.hexsha
+            except Exception as e:
+                print(f"Failed to get last commit hash from local clone: {e}")
+        
+        return None
 
 
 def _get_api_provider(repo_url: str, token: Optional[str] = None) -> RepoProvider:

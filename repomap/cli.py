@@ -149,6 +149,14 @@ def main() -> Optional[int]:  # noqa: C901
             method_desc = "local cloning" if use_local_clone else "API"
             logger.info(f"Generating repository AST tree for {args.repo_url} using {method_desc}")
             generator = RepoTreeGenerator(args.token, use_local_clone=use_local_clone)
+            
+            # Check if existing repo-tree is up to date
+            if generator.is_repo_tree_up_to_date(args.repo_url, args.ref, args.output):
+                logger.info(f"Repository AST tree is up to date (no changes in commit hash). Skipping generation.")
+                logger.info(f"Existing tree at {args.output} is current")
+                return 0
+            
+            logger.info("Repository has changes, generating new AST tree...")
             repo_tree = generator.generate_repo_tree(args.repo_url, args.ref)
 
             # Save repository AST tree

@@ -263,3 +263,61 @@ def test_main_exception(mock_parse):
     mock_parse.side_effect = Exception("Test error")
     result = main()
     assert result == 1
+
+
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_up_to_date(mock_generator):
+    """Test main function skips generation when repo-tree is up to date."""
+    mock_instance = MagicMock()
+    mock_instance.is_repo_tree_up_to_date.return_value = True
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json']):
+        result = main()
+
+    assert result == 0
+    mock_instance.is_repo_tree_up_to_date.assert_called_once_with(
+        'https://example.com/repo', None, 'output.json'
+    )
+    # Should not call generate_repo_tree when up to date
+    mock_instance.generate_repo_tree.assert_not_called()
+    mock_instance.save_repo_tree.assert_not_called()
+
+
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_outdated(mock_generator):
+    """Test main function generates new tree when repo-tree is outdated."""
+    mock_instance = MagicMock()
+    mock_instance.is_repo_tree_up_to_date.return_value = False
+    mock_instance.generate_repo_tree.return_value = {"metadata": {"last_commit_hash": "new123"}, "files": {}}
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json']):
+        result = main()
+
+    assert result == 0
+    mock_instance.is_repo_tree_up_to_date.assert_called_once_with(
+        'https://example.com/repo', None, 'output.json'
+    )
+    # Should call generate_repo_tree when outdated
+    mock_instance.generate_repo_tree.assert_called_once()
+    mock_instance.save_repo_tree.assert_called_once()
+
+
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_with_ref_up_to_date(mock_generator):
+    """Test main function skips generation when repo-tree with ref is up to date."""
+    mock_instance = MagicMock()
+    mock_instance.is_repo_tree_up_to_date.return_value = True
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'develop', '-o', 'output.json']):
+        result = main()
+
+    assert result == 0
+    mock_instance.is_repo_tree_up_to_date.assert_called_once_with(
+        'https://example.com/repo', 'develop', 'output.json'
+    )
+    # Should not call generate_repo_tree when up to date
+    mock_instance.generate_repo_tree.assert_not_called()
+    mock_instance.save_repo_tree.assert_not_called()

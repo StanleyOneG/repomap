@@ -706,13 +706,7 @@ class RepoTreeGenerator:
         if not self.provider:
             self.provider = get_provider(repo_url, self.token, self.use_local_clone)
 
-        try:
-            ref = self.provider.validate_ref(repo_url, ref)
-        except ValueError as e:
-            raise e
-        except Exception:
-            ref = 'main'
-
+        # Fetch repo structure first (this handles ref validation and cloning)
         try:
             repo_structure = self.provider.fetch_repo_structure(repo_url, ref=ref)
         except Exception as e:
@@ -720,10 +714,18 @@ class RepoTreeGenerator:
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
 
+        # Get the actual ref that was used (in case ref was None)
+        if not ref:
+            # If no ref was provided, get the default branch
+            ref = self.provider.validate_ref(repo_url, None)
+
+        # Get commit hash (API-first for speed, with clone fallback)
+        last_commit_hash = self.provider.get_last_commit_hash(repo_url, ref)
+
         self.node_count = 0
         self.MAX_NODES = 10000
 
-        repo_tree = {"metadata": {"url": repo_url, "ref": ref}, "files": {}}
+        repo_tree = {"metadata": {"url": repo_url, "ref": ref, "last_commit_hash": last_commit_hash}, "files": {}}
 
         files_to_process = []
 
@@ -796,6 +798,101 @@ class RepoTreeGenerator:
         if hasattr(self.provider, 'cleanup'):
             self.provider.cleanup()
 
+        return repo_tree
+
+    def is_repo_tree_up_to_date(self, repo_url: str, ref: Optional[str] = None, output_path: Optional[str] = None) -> bool:
+        """Check if repo-tree is up to date by comparing commit hashes.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+            output_path: Path to existing repo-tree file to check
+
+        Returns:
+            bool: True if repo-tree is up to date, False if needs regeneration
+        """
+        # Quick check - if file doesn't exist, no need to do expensive operations
+        if not output_path or not os.path.exists(output_path):
+            return False
+
+        try:
+            # Load existing repo-tree
+            with open(output_path, 'r') as f:
+                existing_repo_tree = json.load(f)
+            
+            existing_metadata = existing_repo_tree.get('metadata', {})
+            existing_url = existing_metadata.get('url')
+            existing_ref = existing_metadata.get('ref')
+            existing_hash = existing_metadata.get('last_commit_hash')
+
+            # Quick checks first - avoid expensive operations
+            if existing_url != repo_url:
+                return False
+
+            # Check if existing repo-tree has commit hash
+            if not existing_hash:
+                return False
+                
+            if not self.provider:
+                self.provider = get_provider(repo_url, self.token, self.use_local_clone)
+            
+            # Only validate ref if we need to (when ref is provided and different from stored)
+            current_ref = ref
+            if not ref:
+                # If no ref provided, we need to get the default
+                current_ref = self.provider.validate_ref(repo_url, ref)
+            elif ref != existing_ref:
+                # Only validate if the refs are different
+                current_ref = self.provider.validate_ref(repo_url, ref)
+                if existing_ref != current_ref:
+                    return False
+            else:
+                # Use the existing ref if it matches what we're asking for
+                current_ref = existing_ref
+
+            # Get current commit hash
+            current_hash = self.provider.get_last_commit_hash(repo_url, current_ref)
+            if not current_hash:
+                return False
+
+            # Compare hashes
+            return existing_hash == current_hash
+
+        except Exception as e:
+            print(f"Error checking repo-tree status: {e}")
+            return False
+
+    def generate_repo_tree_if_needed(
+        self, 
+        repo_url: str, 
+        ref: Optional[str] = None,
+        output_path: Optional[str] = None,
+        force: bool = False
+    ) -> Dict[str, Any]:
+        """Generate repo-tree only if needed (commit hash has changed) or force is True.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+            output_path: Path to save/check existing repo-tree file
+            force: Force regeneration even if up to date
+
+        Returns:
+            Dict[str, Any]: Repository tree data
+        """
+        # Check if regeneration is needed
+        if not force and output_path and self.is_repo_tree_up_to_date(repo_url, ref, output_path):
+            print(f"Repository AST tree is up to date (no changes in commit hash). Loading existing tree.")
+            with open(output_path, 'r') as f:
+                return json.load(f)
+
+        print("Repository has changes, generating new AST tree...")
+        repo_tree = self.generate_repo_tree(repo_url, ref)
+        
+        if output_path:
+            self.save_repo_tree(repo_tree, output_path)
+            print(f"Repository AST tree saved to {output_path}")
+        
         return repo_tree
 
     def save_repo_tree(self, repo_tree: Dict[str, Any], output_path: str):
