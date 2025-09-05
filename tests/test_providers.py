@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import git
 import gitlab
 import pytest
 
@@ -237,6 +238,112 @@ class TestLocalRepoProvider:
         assert provider._temp_dirs == []
         assert provider._cloned_repos == {}
         assert mock_rmtree.call_count == 2
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_with_branch_ref(self, mock_clone, mock_tempdir):
+        """Test repository cloning with specific branch reference."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        result = provider._clone_repo('https://github.com/owner/repo', 'develop')
+
+        assert str(result) == '/tmp/test_dir/repo'
+        # Should try to clone the specific branch first
+        mock_clone.assert_called_once()
+        args, kwargs = mock_clone.call_args
+        assert kwargs.get('branch') == 'develop'
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_with_tag_ref_fallback(self, mock_clone, mock_tempdir):
+        """Test repository cloning with tag reference requiring fallback."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        
+        # First call (specific ref) fails, second call (default) succeeds
+        mock_clone.side_effect = [git.exc.GitCommandError("Branch not found"), mock_repo]
+
+        provider = LocalRepoProvider()
+        result = provider._clone_repo('https://github.com/owner/repo', 'v2.0.0')
+
+        assert str(result) == '/tmp/test_dir/repo'
+        # Should be called twice - once for specific ref, once for default
+        assert mock_clone.call_count == 2
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_with_invalid_ref(self, mock_clone, mock_tempdir):
+        """Test repository cloning with invalid reference raises ValueError."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_repo.git.checkout.side_effect = git.exc.GitCommandError("Ref not found")
+        mock_repo.git.fetch.side_effect = git.exc.GitCommandError("Ref not found")
+        
+        # First call (specific ref) fails, second call (default) succeeds but checkout fails
+        mock_clone.side_effect = [git.exc.GitCommandError("Branch not found"), mock_repo]
+
+        provider = LocalRepoProvider()
+        
+        with pytest.raises(ValueError, match="No ref found in repository by name: nonexistent-ref"):
+            provider._clone_repo('https://github.com/owner/repo', 'nonexistent-ref')
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    @patch('shutil.rmtree')
+    def test_validate_ref_with_branch(self, mock_rmtree, mock_clone, mock_tempdir):
+        """Test validate_ref with valid branch reference."""
+        mock_tempdir.return_value = '/tmp/validate_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        result = provider.validate_ref('https://github.com/owner/repo', 'develop')
+
+        assert result == 'develop'
+        mock_repo.git.checkout.assert_called_once_with('develop')
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    @patch('shutil.rmtree')
+    def test_validate_ref_with_tag_fallback(self, mock_rmtree, mock_clone, mock_tempdir):
+        """Test validate_ref with tag requiring fallback fetch."""
+        mock_tempdir.return_value = '/tmp/validate_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        
+        # Checkout fails first, then fetch and checkout succeed
+        mock_repo.git.checkout.side_effect = [git.exc.GitCommandError("Not found"), None]
+        mock_repo.git.fetch.return_value = None
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        result = provider.validate_ref('https://github.com/owner/repo', 'v1.0.0')
+
+        assert result == 'v1.0.0'
+        # Should try multiple fetch strategies
+        assert mock_repo.git.fetch.call_count >= 1
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    @patch('shutil.rmtree')
+    def test_validate_ref_invalid(self, mock_rmtree, mock_clone, mock_tempdir):
+        """Test validate_ref with invalid reference raises ValueError."""
+        mock_tempdir.return_value = '/tmp/validate_dir'
+        mock_repo = MagicMock()
+        mock_repo.git.checkout.side_effect = git.exc.GitCommandError("Not found")
+        mock_repo.git.fetch.side_effect = git.exc.GitCommandError("Not found")
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        
+        with pytest.raises(ValueError, match="No ref found in repository by name: invalid-ref"):
+            provider.validate_ref('https://github.com/owner/repo', 'invalid-ref')
 
     def test_get_file_content_no_local_clone(self):
         """Test get_file_content falls back to API when local clone is disabled."""

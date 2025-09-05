@@ -434,27 +434,60 @@ class LocalRepoProvider(RepoProvider):
                 elif 'gitlab' in parsed.netloc:
                     clone_url = repo_url.replace('https://', f'https://oauth2:{self.token}@')
 
-            # Shallow clone for performance - we only need the files
-            repo = git.Repo.clone_from(
-                clone_url, 
-                clone_path, 
-                depth=1,  # Shallow clone
-                single_branch=True,
-                branch=ref if ref else None
-            )
-            
-            # If specific ref was requested and it's not the default branch
-            if ref and ref != repo.active_branch.name:
+            # Clone the repository - different strategy based on whether ref is specified
+            if ref:
                 try:
-                    repo.git.checkout(ref)
+                    # Try to clone the specific branch/tag directly first
+                    repo = git.Repo.clone_from(
+                        clone_url,
+                        clone_path,
+                        depth=1,
+                        single_branch=True,
+                        branch=ref
+                    )
                 except git.exc.GitCommandError:
-                    # Ref might be a tag or commit - fetch it
-                    repo.git.fetch('origin', ref)
-                    repo.git.checkout(ref)
+                    # If direct clone of branch fails, clone default and checkout
+                    repo = git.Repo.clone_from(
+                        clone_url,
+                        clone_path,
+                        depth=1
+                    )
+                    
+                    # Try to checkout the ref
+                    try:
+                        repo.git.checkout(ref)
+                    except git.exc.GitCommandError:
+                        # If checkout fails, try to fetch the ref from remote
+                        try:
+                            repo.git.fetch('origin', f'{ref}:{ref}')
+                            repo.git.checkout(ref)
+                        except git.exc.GitCommandError:
+                            # Try fetching as a tag or remote branch
+                            try:
+                                repo.git.fetch('origin', f'+refs/heads/{ref}:refs/remotes/origin/{ref}')
+                                repo.git.checkout(f'origin/{ref}')
+                            except git.exc.GitCommandError:
+                                # Try fetching as a tag
+                                try:
+                                    repo.git.fetch('origin', f'+refs/tags/{ref}:refs/tags/{ref}')
+                                    repo.git.checkout(ref)
+                                except git.exc.GitCommandError:
+                                    raise ValueError(f"No ref found in repository by name: {ref}")
+            else:
+                # No specific ref, clone default branch
+                repo = git.Repo.clone_from(
+                    clone_url,
+                    clone_path,
+                    depth=1,
+                    single_branch=True
+                )
 
             self._cloned_repos[cache_key] = clone_path
             return clone_path
 
+        except ValueError as e:
+            # Re-raise ValueError for invalid refs
+            raise
         except Exception as e:
             # Fallback to existing API providers for authentication issues
             raise RuntimeError(f"Failed to clone repository {repo_url}: {e}")
@@ -606,12 +639,25 @@ class LocalRepoProvider(RepoProvider):
                     repo.git.checkout(ref)
                     return ref
                 except git.exc.GitCommandError:
+                    # If checkout fails, try to fetch the ref from remote
                     try:
-                        repo.git.fetch('origin', ref)
+                        repo.git.fetch('origin', f'{ref}:{ref}')
                         repo.git.checkout(ref)
                         return ref
                     except git.exc.GitCommandError:
-                        raise ValueError(f"No ref found in repository by name: {ref}")
+                        # Try fetching as a remote branch
+                        try:
+                            repo.git.fetch('origin', f'+refs/heads/{ref}:refs/remotes/origin/{ref}')
+                            repo.git.checkout(f'origin/{ref}')
+                            return ref
+                        except git.exc.GitCommandError:
+                            # Try fetching as a tag
+                            try:
+                                repo.git.fetch('origin', f'+refs/tags/{ref}:refs/tags/{ref}')
+                                repo.git.checkout(ref)
+                                return ref
+                            except git.exc.GitCommandError:
+                                raise ValueError(f"No ref found in repository by name: {ref}")
             finally:
                 import shutil
                 if os.path.exists(temp_dir):
