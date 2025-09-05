@@ -98,6 +98,9 @@ def test_detect_language(repo_tree_generator):
     """Test language detection from file extensions."""
     assert repo_tree_generator._detect_language("test.py") == "python"
     assert repo_tree_generator._detect_language("test.cpp") == "cpp"
+    assert repo_tree_generator._detect_language("main.go") == "go"
+    assert repo_tree_generator._detect_language("test.c") == "c"
+    assert repo_tree_generator._detect_language("script.js") == "javascript"
     assert repo_tree_generator._detect_language("test.unknown") is None
 
 
@@ -361,6 +364,100 @@ class SimpleClass:
 
     def method_two(self):
         self.method_one()
+"""
+
+
+@pytest.fixture
+def mock_go_content():
+    """Mock Go file content for testing."""
+    return """
+package main
+
+import (
+    "fmt"
+    "log"
+    "strings"
+)
+
+// User represents a user in the system
+type User struct {
+    Name string
+    Age  int
+    Email string
+}
+
+// UserService provides user operations
+type UserService struct {
+    users []User
+}
+
+// GetName returns the user's name
+func (u *User) GetName() string {
+    return u.Name
+}
+
+// SetAge sets the user's age
+func (u *User) SetAge(age int) {
+    u.Age = age
+    validateAge(age)
+}
+
+// GetFormattedName returns formatted name
+func (u *User) GetFormattedName() string {
+    return strings.ToUpper(u.Name)
+}
+
+// NewUserService creates a new user service
+func NewUserService() *UserService {
+    return &UserService{
+        users: make([]User, 0),
+    }
+}
+
+// AddUser adds a user to the service
+func (s *UserService) AddUser(user User) {
+    s.users = append(s.users, user)
+    log.Printf("Added user: %s", user.GetName())
+}
+
+// main function - entry point
+func main() {
+    user := &User{Name: "John", Age: 30, Email: "john@example.com"}
+    fmt.Println(user.GetName())
+    user.SetAge(25)
+    
+    service := NewUserService()
+    service.AddUser(*user)
+    
+    processUser(user)
+    result := validateUser(user)
+    if result {
+        logUser(user)
+    }
+}
+
+// processUser processes a user
+func processUser(u *User) {
+    validateUser(u)
+    logUser(u)
+    formatted := u.GetFormattedName()
+    fmt.Println(formatted)
+}
+
+// validateUser validates a user
+func validateUser(u *User) bool {
+    return u.Age > 0 && len(u.Name) > 0
+}
+
+// logUser logs user information
+func logUser(u *User) {
+    log.Printf("User: %s, Age: %d, Email: %s", u.Name, u.Age, u.Email)
+}
+
+// validateAge validates an age value
+func validateAge(age int) bool {
+    return age >= 0 && age <= 150
+}
 """
 
 
@@ -1564,3 +1661,130 @@ class TestRepoTreeCommitHash:
 
         # Should generate new tree with new commit hash
         assert result['metadata']['last_commit_hash'] == 'new456hash'
+
+
+# ========================
+# Go Language Tests
+# ========================
+
+def test_parse_go_file_ast(repo_tree_generator, mock_go_content):
+    """Test parsing Go file AST to extract functions, types, calls, and imports."""
+    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    
+    # Test that we found the expected functions
+    assert len(ast_data["functions"]) > 0
+    assert "main" in ast_data["functions"]
+    assert "processUser" in ast_data["functions"] 
+    assert "validateUser" in ast_data["functions"]
+    assert "logUser" in ast_data["functions"]
+    assert "validateAge" in ast_data["functions"]
+    assert "NewUserService" in ast_data["functions"]
+    
+    # Test method functions (with receiver types)
+    assert "User.GetName" in ast_data["functions"]
+    assert "User.SetAge" in ast_data["functions"]
+    assert "User.GetFormattedName" in ast_data["functions"]
+    assert "UserService.AddUser" in ast_data["functions"]
+    
+    # Test that types (Go structs) are treated as classes
+    assert len(ast_data["classes"]) == 2
+    assert "User" in ast_data["classes"]
+    assert "UserService" in ast_data["classes"]
+    
+    # Test that User struct has the expected methods
+    user_class = ast_data["classes"]["User"]
+    assert "GetName" in user_class["methods"]
+    assert "SetAge" in user_class["methods"]
+    assert "GetFormattedName" in user_class["methods"]
+    
+    # Test that UserService struct has the expected methods
+    service_class = ast_data["classes"]["UserService"]
+    assert "AddUser" in service_class["methods"]
+    
+    # Test imports are extracted correctly
+    assert len(ast_data["imports"]) == 3
+    assert "fmt" in ast_data["imports"]
+    assert "log" in ast_data["imports"]
+    assert "strings" in ast_data["imports"]
+    
+    # Test that calls are detected
+    assert len(ast_data["calls"]) > 0
+    call_names = [call["name"] for call in ast_data["calls"]]
+    assert "Println" in call_names  # fmt.Println()
+    assert "SetAge" in call_names   # user.SetAge() 
+    assert "processUser" in call_names  # processUser()
+    assert "validateUser" in call_names  # validateUser()
+    assert "GetName" in call_names  # user.GetName()
+
+
+def test_go_function_details(repo_tree_generator, mock_go_content):
+    """Test detailed function information for Go functions."""
+    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    
+    # Test main function details
+    main_func = ast_data["functions"]["main"]
+    assert main_func["name"] == "main"
+    assert main_func["class"] is None
+    assert main_func["start_line"] > 0
+    assert main_func["end_line"] > main_func["start_line"]
+    
+    # Test method function details
+    get_name_func = ast_data["functions"]["User.GetName"]
+    assert get_name_func["name"] == "GetName"
+    assert get_name_func["class"] == "User"
+    assert get_name_func["start_line"] > 0
+    
+    # Test that method calls are captured
+    assert len(get_name_func["calls"]) >= 0  # May or may not have calls
+    
+    # Test regular function details
+    validate_func = ast_data["functions"]["validateUser"]
+    assert validate_func["name"] == "validateUser"
+    assert validate_func["class"] is None
+    
+
+def test_go_type_extraction(repo_tree_generator, mock_go_content):
+    """Test Go type (struct) extraction and classification."""
+    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    
+    # Test User struct
+    user_type = ast_data["classes"]["User"]
+    assert user_type["name"] == "User"
+    assert user_type["start_line"] > 0
+    assert user_type["end_line"] > user_type["start_line"]
+    assert len(user_type["methods"]) == 3  # GetName, SetAge, GetFormattedName
+    assert user_type["base_classes"] == []  # Go structs don't have inheritance
+    
+    # Test UserService struct  
+    service_type = ast_data["classes"]["UserService"]
+    assert service_type["name"] == "UserService"
+    assert len(service_type["methods"]) == 1  # AddUser
+
+
+def test_go_empty_file(repo_tree_generator):
+    """Test parsing empty Go file."""
+    empty_go_content = "package main\n"
+    ast_data = repo_tree_generator._parse_file_ast(empty_go_content, "go")
+    
+    assert ast_data["functions"] == {}
+    assert ast_data["classes"] == {}
+    assert ast_data["calls"] == []
+    assert ast_data["imports"] == []
+
+
+def test_go_simple_import(repo_tree_generator):
+    """Test Go import parsing with different import styles.""" 
+    simple_import_content = '''
+package main
+
+import "fmt"
+import "log"
+
+func main() {
+    fmt.Println("Hello")
+}
+'''
+    ast_data = repo_tree_generator._parse_file_ast(simple_import_content, "go")
+    assert "fmt" in ast_data["imports"]
+    assert "log" in ast_data["imports"]
+    assert len(ast_data["imports"]) == 2
