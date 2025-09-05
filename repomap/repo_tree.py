@@ -805,7 +805,10 @@ class RepoTreeGenerator:
         try:
             repo_structure = self.provider.fetch_repo_structure(repo_url, ref=ref)
         except Exception as e:
-            if "not found or is empty" in str(e):
+            # Handle various error messages that indicate invalid ref specifically
+            error_str = str(e).lower()
+            # Only catch ref-specific errors, not general repository not found errors
+            if ref and any(msg in error_str for msg in ["tree not found", "is empty", "invalid reference"]):
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
 
