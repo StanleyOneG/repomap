@@ -5,8 +5,13 @@ from unittest.mock import Mock, patch
 from repomap import RepoTreeGenerator, fetch_repo_structure
 
 
-def test_repo_tree_generator_import():
+@patch('repomap.repo_tree.CallStackGenerator')
+def test_repo_tree_generator_import(mock_callstack):
     """Test that RepoTreeGenerator can be imported and instantiated."""
+    # Mock CallStackGenerator to avoid tree-sitter initialization
+    mock_callstack.return_value.parsers = {}
+    mock_callstack.return_value.queries = {}
+    
     generator = RepoTreeGenerator(token="test_token")
     assert generator is not None
     assert generator.token == "test_token"
@@ -33,8 +38,13 @@ def test_fetch_repo_structure_import(mock_get_provider):
 
 
 @patch('repomap.repo_tree.get_provider')
-def test_repo_tree_generator_basic_usage(mock_get_provider):
+@patch('repomap.repo_tree.CallStackGenerator')
+def test_repo_tree_generator_basic_usage(mock_callstack, mock_get_provider):
     """Test basic usage of RepoTreeGenerator as a library."""
+    # Mock CallStackGenerator to avoid tree-sitter initialization
+    mock_callstack.return_value.parsers = {'python': Mock()}
+    mock_callstack.return_value.queries = {'python': Mock()}
+    
     # Mock the provider
     mock_provider = Mock()
     mock_provider.validate_ref.return_value = "main"
@@ -53,9 +63,9 @@ def test_repo_tree_generator_basic_usage(mock_get_provider):
     assert tree["metadata"]["url"] == "https://github.com/user/repo"
     assert tree["metadata"]["ref"] == "main"
 
-    # Verify provider interactions
+    # Verify provider interactions (includes use_local_clone=True by default)
     mock_get_provider.assert_called_once_with(
-        "https://github.com/user/repo", "test_token"
+        "https://github.com/user/repo", "test_token", True
     )
     mock_provider.validate_ref.assert_called_once()
     mock_provider.fetch_repo_structure.assert_called_once()
