@@ -1,9 +1,13 @@
 """Module for repository provider abstractions and implementations."""
 
+import os
+import tempfile
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Dict, Optional
 from urllib.parse import urlparse
 
+import git
 import gitlab
 from github import Github
 from github.Repository import Repository
@@ -371,8 +375,258 @@ class GitHubProvider(RepoProvider):
         return repo.default_branch
 
 
-def get_provider(repo_url: str, token: Optional[str] = None) -> RepoProvider:
-    """Get appropriate repository provider based on URL.
+class LocalRepoProvider(RepoProvider):
+    """Local repository provider implementation using GitPython."""
+
+    def __init__(self, token: Optional[str] = None, use_local_clone: bool = True):
+        """Initialize Local repository provider.
+
+        Args:
+            token: Optional access token for authentication
+            use_local_clone: Whether to use local cloning for performance
+        """
+        self.token = token
+        self.use_local_clone = use_local_clone
+        self._temp_dirs = []
+        self._cloned_repos = {}
+
+    def __del__(self):
+        """Cleanup temporary directories."""
+        self.cleanup()
+
+    def cleanup(self):
+        """Clean up temporary clone directories."""
+        import shutil
+        for temp_dir in self._temp_dirs:
+            if os.path.exists(temp_dir):
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
+        self._temp_dirs.clear()
+        self._cloned_repos.clear()
+
+    def _clone_repo(self, repo_url: str, ref: Optional[str] = None) -> Path:
+        """Clone repository locally for faster access.
+
+        Args:
+            repo_url: Repository URL
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Path: Path to local clone
+        """
+        cache_key = f"{repo_url}#{ref or 'default'}"
+        if cache_key in self._cloned_repos:
+            return self._cloned_repos[cache_key]
+
+        temp_dir = tempfile.mkdtemp(prefix="repomap_clone_")
+        self._temp_dirs.append(temp_dir)
+        clone_path = Path(temp_dir) / "repo"
+
+        try:
+            # Create authenticated URL if token is provided
+            clone_url = repo_url
+            if self.token:
+                parsed = urlparse(repo_url)
+                if 'github.com' in parsed.netloc:
+                    clone_url = repo_url.replace('https://github.com/', f'https://{self.token}@github.com/')
+                elif 'gitlab' in parsed.netloc:
+                    clone_url = repo_url.replace('https://', f'https://oauth2:{self.token}@')
+
+            # Shallow clone for performance - we only need the files
+            repo = git.Repo.clone_from(
+                clone_url, 
+                clone_path, 
+                depth=1,  # Shallow clone
+                single_branch=True,
+                branch=ref if ref else None
+            )
+            
+            # If specific ref was requested and it's not the default branch
+            if ref and ref != repo.active_branch.name:
+                try:
+                    repo.git.checkout(ref)
+                except git.exc.GitCommandError:
+                    # Ref might be a tag or commit - fetch it
+                    repo.git.fetch('origin', ref)
+                    repo.git.checkout(ref)
+
+            self._cloned_repos[cache_key] = clone_path
+            return clone_path
+
+        except Exception as e:
+            # Fallback to existing API providers for authentication issues
+            raise RuntimeError(f"Failed to clone repository {repo_url}: {e}")
+
+    def get_file_content(self, file_url: str) -> Optional[str]:
+        """Get content of a file from local clone or API.
+
+        Args:
+            file_url: URL to the file or local path if already cloned
+
+        Returns:
+            Optional[str]: File content or None if failed
+        """
+        if not self.use_local_clone:
+            # Fallback to appropriate API provider
+            provider = _get_api_provider(file_url, self.token)
+            return provider.get_file_content(file_url)
+
+        try:
+            # Extract repo URL and file path from file URL
+            parsed = urlparse(file_url)
+            if '/-/blob/' in file_url:  # GitLab format
+                parts = file_url.split('/-/blob/')
+                repo_url = parts[0]
+                ref_and_path = parts[1].split('/', 1)
+                ref = ref_and_path[0]
+                file_path = ref_and_path[1] if len(ref_and_path) > 1 else ''
+            elif '/blob/' in file_url:  # GitHub format
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                path_parts = parsed.path.strip('/').split('/')
+                owner, repo_name = path_parts[:2]
+                repo_url = f"{base_url}/{owner}/{repo_name}"
+                
+                blob_index = path_parts.index('blob')
+                ref = path_parts[blob_index + 1]
+                file_path = '/'.join(path_parts[blob_index + 2:])
+            else:
+                return None
+
+            clone_path = self._clone_repo(repo_url, ref)
+            full_file_path = clone_path / file_path
+            
+            if full_file_path.exists() and full_file_path.is_file():
+                return full_file_path.read_text(encoding='utf-8', errors='ignore')
+            return None
+
+        except Exception as e:
+            print(f"Failed to get file content from local clone: {e}")
+            # Fallback to API
+            provider = _get_api_provider(file_url, self.token)
+            return provider.get_file_content(file_url)
+
+    def fetch_repo_structure(self, repo_url: str, ref: Optional[str] = None) -> Dict:
+        """Fetch repository structure from local clone or API.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            Dict: Repository structure
+        """
+        if not self.use_local_clone:
+            # Fallback to appropriate API provider
+            provider = _get_api_provider(repo_url, self.token)
+            return provider.fetch_repo_structure(repo_url, ref)
+
+        try:
+            clone_path = self._clone_repo(repo_url, ref)
+            return self._build_structure_from_path(clone_path)
+
+        except Exception as e:
+            print(f"Failed to fetch repo structure from local clone: {e}")
+            # Fallback to API
+            provider = _get_api_provider(repo_url, self.token)
+            return provider.fetch_repo_structure(repo_url, ref)
+
+    def _build_structure_from_path(self, root_path: Path) -> Dict:
+        """Build repository structure from local filesystem.
+
+        Args:
+            root_path: Path to repository root
+
+        Returns:
+            Dict: Repository structure
+        """
+        structure = {}
+        
+        def scan_directory(current_path: Path, current_structure: Dict):
+            try:
+                for item in current_path.iterdir():
+                    # Skip .git directory and other hidden directories
+                    if item.name.startswith('.'):
+                        continue
+                        
+                    if item.is_file():
+                        current_structure[item.name] = {
+                            'type': 'blob',
+                            'mode': '100644',
+                            'id': '',  # We don't need git object IDs for our purposes
+                        }
+                    elif item.is_dir():
+                        current_structure[item.name] = {}
+                        scan_directory(item, current_structure[item.name])
+            except PermissionError:
+                # Skip directories we can't read
+                pass
+
+        scan_directory(root_path, structure)
+        return structure
+
+    def validate_ref(self, repo_url: str, ref: Optional[str] = None) -> str:
+        """Validate git reference and return default if not provided.
+
+        Args:
+            repo_url: URL to the repository
+            ref: Optional git reference (branch, tag, commit)
+
+        Returns:
+            str: Validated reference or default branch
+
+        Raises:
+            ValueError: If provided ref does not exist
+        """
+        if not self.use_local_clone:
+            # Fallback to appropriate API provider
+            provider = _get_api_provider(repo_url, self.token)
+            return provider.validate_ref(repo_url, ref)
+
+        try:
+            # For local cloning, we'll attempt the clone and let GitPython handle validation
+            temp_dir = tempfile.mkdtemp(prefix="repomap_validate_")
+            try:
+                clone_url = repo_url
+                if self.token:
+                    parsed = urlparse(repo_url)
+                    if 'github.com' in parsed.netloc:
+                        clone_url = repo_url.replace('https://github.com/', f'https://{self.token}@github.com/')
+                    elif 'gitlab' in parsed.netloc:
+                        clone_url = repo_url.replace('https://', f'https://oauth2:{self.token}@')
+
+                repo = git.Repo.clone_from(clone_url, temp_dir, depth=1)
+                
+                if not ref:
+                    return repo.active_branch.name
+                
+                # Try to checkout the ref to validate it exists
+                try:
+                    repo.git.checkout(ref)
+                    return ref
+                except git.exc.GitCommandError:
+                    try:
+                        repo.git.fetch('origin', ref)
+                        repo.git.checkout(ref)
+                        return ref
+                    except git.exc.GitCommandError:
+                        raise ValueError(f"No ref found in repository by name: {ref}")
+            finally:
+                import shutil
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+
+        except Exception as e:
+            if "No ref found" in str(e):
+                raise
+            # Fallback to API for validation
+            provider = _get_api_provider(repo_url, self.token)
+            return provider.validate_ref(repo_url, ref)
+
+
+def _get_api_provider(repo_url: str, token: Optional[str] = None) -> RepoProvider:
+    """Get appropriate API-based repository provider based on URL.
 
     Args:
         repo_url: Repository URL
@@ -385,3 +639,19 @@ def get_provider(repo_url: str, token: Optional[str] = None) -> RepoProvider:
     if 'github' in parsed.netloc:
         return GitHubProvider(token)
     return GitLabProvider(token)
+
+
+def get_provider(repo_url: str, token: Optional[str] = None, use_local_clone: bool = True) -> RepoProvider:
+    """Get appropriate repository provider based on URL and preferences.
+
+    Args:
+        repo_url: Repository URL
+        token: Optional access token
+        use_local_clone: Whether to use local cloning for performance (default: True)
+
+    Returns:
+        RepoProvider: Repository provider instance
+    """
+    if use_local_clone:
+        return LocalRepoProvider(token, use_local_clone=True)
+    return _get_api_provider(repo_url, token)

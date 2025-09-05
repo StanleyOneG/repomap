@@ -59,6 +59,11 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
         "--ref",
         help="Git reference (branch, tag, commit) to use for repository AST tree",
     )
+    parser.add_argument(
+        "--no-local-clone",
+        action="store_true",
+        help="Disable local cloning for repo-tree generation (use API instead, slower but uses less disk space)",
+    )
 
     # Call stack arguments
     parser.add_argument(
@@ -140,8 +145,10 @@ def main() -> Optional[int]:  # noqa: C901
     try:
         if args.repo_tree:
             # Generate repository AST tree
-            logger.info(f"Generating repository AST tree for {args.repo_url}")
-            generator = RepoTreeGenerator(args.token)
+            use_local_clone = not args.no_local_clone
+            method_desc = "local cloning" if use_local_clone else "API"
+            logger.info(f"Generating repository AST tree for {args.repo_url} using {method_desc}")
+            generator = RepoTreeGenerator(args.token, use_local_clone=use_local_clone)
             repo_tree = generator.generate_repo_tree(args.repo_url, args.ref)
 
             # Save repository AST tree
