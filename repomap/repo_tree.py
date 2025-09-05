@@ -160,13 +160,73 @@ class RepoTreeGenerator:
                                 stack.append((grandchild, current_class))
                     continue
 
+            # Process Go type definitions (structs/interfaces)
+            if lang == 'go' and current_node.type == 'type_declaration':
+                # Handle Go type declarations (struct, interface, etc.)
+                for child in current_node.children:
+                    if child.type == 'type_spec':
+                        type_name_node = None
+                        for spec_child in child.children:
+                            if spec_child.type == 'type_identifier':
+                                type_name_node = spec_child
+                                break
+                        
+                        if type_name_node:
+                            type_name = type_name_node.text.decode('utf8')
+                            self._current_classes[type_name] = {
+                                "instance_vars": {},
+                                "methods": [],
+                                "base_classes": [],
+                                "start_line": current_node.start_point[0],
+                                "end_line": current_node.end_point[0],
+                            }
+
             # Process function/method definitions
-            if current_node.type in ('function_definition', 'method_definition'):
+            if current_node.type in ('function_definition', 'method_definition', 'function_declaration', 'method_declaration'):
                 name_node = None
                 body_node = None
 
                 # Find function name and body
-                if lang == 'cpp':
+                if lang == 'go':
+                    # Handle Go function and method declarations
+                    if current_node.type == 'function_declaration':
+                        # For regular functions: func main() { ... }
+                        for child in current_node.children:
+                            if child.type == 'identifier':
+                                name_node = child
+                                break
+                    elif current_node.type == 'method_declaration':
+                        # For methods: func (u *User) GetName() { ... }
+                        # Find the method name (field_identifier)
+                        for child in current_node.children:
+                            if child.type == 'field_identifier':
+                                name_node = child
+                                break
+                        # Also extract the receiver type for context
+                        receiver_type = None
+                        for child in current_node.children:
+                            if child.type == 'parameter_list':
+                                # This is the receiver parameter list
+                                for param_child in child.children:
+                                    if param_child.type == 'parameter_declaration':
+                                        for param_subchild in param_child.children:
+                                            if param_subchild.type == 'pointer_type':
+                                                for ptr_child in param_subchild.children:
+                                                    if ptr_child.type == 'type_identifier':
+                                                        receiver_type = ptr_child.text.decode('utf8')
+                                                        break
+                                            elif param_subchild.type == 'type_identifier':
+                                                receiver_type = param_subchild.text.decode('utf8')
+                                        break
+                                break
+                        if receiver_type:
+                            current_class = receiver_type
+                    
+                    # Find body node for Go
+                    body_node = next(
+                        (c for c in current_node.children if c.type == 'block'), None
+                    )
+                elif lang == 'cpp':
                     declarator = next(
                         (
                             c
@@ -405,6 +465,19 @@ class RepoTreeGenerator:
                                 calls.append(func_name)
                         else:
                             calls.append(func_name)
+                        continue
+
+                # Handle Go function calls 
+                if lang == 'go':
+                    if current_node.type == 'field_identifier':
+                        # This is a method call like user.GetName() or fmt.Println()
+                        method_name = current_node.text.decode('utf8')
+                        calls.append(method_name)
+                        continue
+                    elif current_node.type == 'identifier':
+                        # This is a regular function call
+                        func_name = current_node.text.decode('utf8')
+                        calls.append(func_name)
                         continue
 
                 # Decompose attribute chain into ordered parts
@@ -664,6 +737,28 @@ class RepoTreeGenerator:
                             # Remove <> from <header.h>
                             header = child.text.decode('utf8').strip('<>')
                             ast_data["imports"].append(header)
+                elif node.type == 'import_declaration':
+                    # Handle Go imports: import "fmt" or import ( "fmt"; "os" )
+                    for child in node.children:
+                        if child.type == 'import_spec':
+                            # Single import spec
+                            for spec_child in child.children:
+                                if spec_child.type == 'interpreted_string_literal':
+                                    # Remove quotes from import path
+                                    import_path = spec_child.text.decode('utf8').strip('"')
+                                    ast_data["imports"].append(import_path)
+                        elif child.type == 'import_spec_list':
+                            # Multiple imports in parentheses
+                            for spec_list_child in child.children:
+                                if spec_list_child.type == 'import_spec':
+                                    for spec_child in spec_list_child.children:
+                                        if spec_child.type == 'interpreted_string_literal':
+                                            import_path = spec_child.text.decode('utf8').strip('"')
+                                            ast_data["imports"].append(import_path)
+                        elif child.type == 'interpreted_string_literal':
+                            # Direct string import: import "fmt"
+                            import_path = child.text.decode('utf8').strip('"')
+                            ast_data["imports"].append(import_path)
                 stack.extend(node.children)
 
         find_imports(tree.root_node)
