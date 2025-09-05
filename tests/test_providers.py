@@ -470,6 +470,22 @@ def test_gitlab_provider_get_last_commit_hash_default_branch(mock_gitlab):
     assert commit_hash == 'gitlab456hash'
 
 
+def test_gitlab_provider_get_last_commit_hash_pagination_parameter(mock_gitlab):
+    """Test GitLab provider get_last_commit_hash passes get_all=False to suppress pagination warning."""
+    mock_commit = MagicMock()
+    mock_commit.id = 'testcommithash'
+    mock_gitlab.projects.get.return_value.commits.list.return_value = [mock_commit]
+
+    provider = GitLabProvider()
+    commit_hash = provider.get_last_commit_hash('https://gitlab.com/owner/repo', 'main')
+    
+    # Verify that commits.list was called with get_all=False
+    mock_gitlab.projects.get.return_value.commits.list.assert_called_with(
+        ref_name='main', per_page=1, get_all=False
+    )
+    assert commit_hash == 'testcommithash'
+
+
 class TestLocalRepoProviderCommitHash:
     """Tests for LocalRepoProvider get_last_commit_hash functionality."""
 

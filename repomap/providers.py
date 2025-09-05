@@ -269,7 +269,7 @@ class GitLabProvider(RepoProvider):
                 ref = project.default_branch
             
             # Get the latest commit for the reference
-            commits = project.commits.list(ref_name=ref, per_page=1)
+            commits = project.commits.list(ref_name=ref, per_page=1, get_all=False)
             if commits:
                 return commits[0].id
         except Exception as e:
