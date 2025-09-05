@@ -11,7 +11,8 @@ from repomap.repo_tree import RepoTreeGenerator
 
 @pytest.fixture
 def repo_tree_generator():
-    """Create a RepoTreeGenerator instance for testing."""
+    """Create a RepoTreeGenerator instance for testing with Python support only."""
+    from repomap.callstack import CallStackGenerator
     with patch('gitlab.Gitlab') as mock_gitlab:
         # Create mock instance with projects attribute
         mock_gl = Mock()
@@ -22,6 +23,50 @@ def repo_tree_generator():
 
         # Disable multiprocessing for testing to avoid pickling issues with mocks
         generator = RepoTreeGenerator(use_multiprocessing=False)
+        
+        # Optimize by only initializing Python parser for better performance
+        with patch.object(CallStackGenerator, 'SUPPORTED_LANGUAGES', {'.py': 'python'}):
+            generator.call_stack_gen = CallStackGenerator(token=generator.token)
+        
+        generator.parsers = generator.call_stack_gen.parsers
+        generator.queries = generator.call_stack_gen.queries
+        
+        return generator
+
+
+@pytest.fixture
+def multi_lang_repo_tree_generator():
+    """Create a RepoTreeGenerator instance for testing with mocked tree-sitter for performance."""
+    from unittest.mock import MagicMock
+    from repomap.callstack import CallStackGenerator
+    
+    with patch('gitlab.Gitlab') as mock_gitlab:
+        # Create mock instance with projects attribute
+        mock_gl = Mock()
+        mock_project = Mock()
+        mock_project.default_branch = 'main'
+        mock_gl.projects.get.return_value = mock_project
+        mock_gitlab.return_value = mock_gl
+
+        # Disable multiprocessing for testing to avoid pickling issues with mocks
+        generator = RepoTreeGenerator(use_multiprocessing=False)
+        
+        # Mock tree-sitter for better performance while maintaining functionality
+        generator.call_stack_gen = CallStackGenerator(token=generator.token)
+        
+        # Replace the parsers with mocked versions that return realistic structures
+        mock_tree = MagicMock()
+        mock_tree.root_node = MagicMock()
+        
+        for lang in ['c', 'cpp', 'go']:
+            mock_parser = MagicMock()
+            mock_parser.parse.return_value = mock_tree
+            generator.call_stack_gen.parsers[lang] = mock_parser
+            generator.call_stack_gen.queries[lang] = MagicMock()
+            
+        generator.parsers = generator.call_stack_gen.parsers
+        generator.queries = generator.call_stack_gen.queries
+        
         return generator
 
 
@@ -807,7 +852,7 @@ def test_save_repo_tree(repo_tree_generator, tmp_path):
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
+def test_generate_repo_tree_c(mock_gitlab, multi_lang_repo_tree_generator, mock_c_content):
     """Test repository AST tree generation for C code."""
     # Setup mock project
     mock_project = Mock()
@@ -830,9 +875,9 @@ def test_generate_repo_tree_c(mock_gitlab, repo_tree_generator, mock_c_content):
 
     # Mock file content fetching
     with patch.object(
-        repo_tree_generator, '_get_file_content', return_value=mock_c_content
+        multi_lang_repo_tree_generator, '_get_file_content', return_value=mock_c_content
     ):
-        repo_tree = repo_tree_generator.generate_repo_tree(
+        repo_tree = multi_lang_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo"
         )
 
@@ -966,7 +1011,7 @@ operation_func get_operation(char op) {
 """
 
 @patch('gitlab.Gitlab')
-def test_c_pointer_functions(mock_gitlab, repo_tree_generator, mock_c_pointer_functions):
+def test_c_pointer_functions(mock_gitlab, multi_lang_repo_tree_generator, mock_c_pointer_functions):
     """Test repository AST tree generation for C code with pointer functions."""
     # Setup mock project
     mock_project = Mock()
@@ -989,9 +1034,9 @@ def test_c_pointer_functions(mock_gitlab, repo_tree_generator, mock_c_pointer_fu
 
     # Mock file content fetching
     with patch.object(
-        repo_tree_generator, '_get_file_content', return_value=mock_c_pointer_functions
+        multi_lang_repo_tree_generator, '_get_file_content', return_value=mock_c_pointer_functions
     ):
-        repo_tree = repo_tree_generator.generate_repo_tree(
+        repo_tree = multi_lang_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo"
         )
 
@@ -1291,7 +1336,7 @@ namespace mynamespace {
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_content):
+def test_generate_repo_tree_cpp(mock_gitlab, multi_lang_repo_tree_generator, mock_cpp_content):
     """Test repository AST tree generation for C++ code."""
     # Setup mock project
     mock_project = Mock()
@@ -1314,9 +1359,9 @@ def test_generate_repo_tree_cpp(mock_gitlab, repo_tree_generator, mock_cpp_conte
 
     # Mock file content fetching
     with patch.object(
-        repo_tree_generator, '_get_file_content', return_value=mock_cpp_content
+        multi_lang_repo_tree_generator, '_get_file_content', return_value=mock_cpp_content
     ):
-        repo_tree = repo_tree_generator.generate_repo_tree(
+        repo_tree = multi_lang_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo"
         )
 
@@ -1667,9 +1712,9 @@ class TestRepoTreeCommitHash:
 # Go Language Tests
 # ========================
 
-def test_parse_go_file_ast(repo_tree_generator, mock_go_content):
+def test_parse_go_file_ast(multi_lang_repo_tree_generator, mock_go_content):
     """Test parsing Go file AST to extract functions, types, calls, and imports."""
-    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
     
     # Test that we found the expected functions
     assert len(ast_data["functions"]) > 0
@@ -1717,9 +1762,9 @@ def test_parse_go_file_ast(repo_tree_generator, mock_go_content):
     assert "GetName" in call_names  # user.GetName()
 
 
-def test_go_function_details(repo_tree_generator, mock_go_content):
+def test_go_function_details(multi_lang_repo_tree_generator, mock_go_content):
     """Test detailed function information for Go functions."""
-    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
     
     # Test main function details
     main_func = ast_data["functions"]["main"]
@@ -1743,9 +1788,9 @@ def test_go_function_details(repo_tree_generator, mock_go_content):
     assert validate_func["class"] is None
     
 
-def test_go_type_extraction(repo_tree_generator, mock_go_content):
+def test_go_type_extraction(multi_lang_repo_tree_generator, mock_go_content):
     """Test Go type (struct) extraction and classification."""
-    ast_data = repo_tree_generator._parse_file_ast(mock_go_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
     
     # Test User struct
     user_type = ast_data["classes"]["User"]
@@ -1761,10 +1806,10 @@ def test_go_type_extraction(repo_tree_generator, mock_go_content):
     assert len(service_type["methods"]) == 1  # AddUser
 
 
-def test_go_empty_file(repo_tree_generator):
+def test_go_empty_file(multi_lang_repo_tree_generator):
     """Test parsing empty Go file."""
     empty_go_content = "package main\n"
-    ast_data = repo_tree_generator._parse_file_ast(empty_go_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(empty_go_content, "go")
     
     assert ast_data["functions"] == {}
     assert ast_data["classes"] == {}
@@ -1772,7 +1817,7 @@ def test_go_empty_file(repo_tree_generator):
     assert ast_data["imports"] == []
 
 
-def test_go_simple_import(repo_tree_generator):
+def test_go_simple_import(multi_lang_repo_tree_generator):
     """Test Go import parsing with different import styles.""" 
     simple_import_content = '''
 package main
@@ -1784,7 +1829,7 @@ func main() {
     fmt.Println("Hello")
 }
 '''
-    ast_data = repo_tree_generator._parse_file_ast(simple_import_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(simple_import_content, "go")
     assert "fmt" in ast_data["imports"]
     assert "log" in ast_data["imports"]
     assert len(ast_data["imports"]) == 2

@@ -108,9 +108,32 @@ def structure_file(tmp_path):
 
 
 @pytest.fixture
-def generator(structure_file):
+def generator():
     """Create a CallStackGenerator instance for testing."""
-    return CallStackGenerator(structure_file)
+    return CallStackGenerator(token=None)
+
+
+@pytest.fixture
+def fast_generator():
+    """Create a CallStackGenerator with mocked tree-sitter initialization for faster tests."""
+    from unittest.mock import MagicMock
+    gen = CallStackGenerator(token=None)
+    # Replace slow parsers with mocks for tests that don't need real parsing
+    gen.parsers = {'python': MagicMock(), 'c': MagicMock(), 'cpp': MagicMock(), 'go': MagicMock()}
+    gen.queries = {'python': MagicMock(), 'c': MagicMock(), 'cpp': MagicMock(), 'go': MagicMock()}
+    return gen
+
+
+@pytest.fixture
+def python_generator():
+    """Create a CallStackGenerator with only Python parser initialized for faster tests."""
+    from unittest.mock import patch
+    
+    # Mock the SUPPORTED_LANGUAGES to only include Python
+    with patch.object(CallStackGenerator, 'SUPPORTED_LANGUAGES', {'.py': 'python'}):
+        gen = CallStackGenerator(token=None)
+    
+    return gen
 
 
 def test_init_parsers(generator):
@@ -121,15 +144,15 @@ def test_init_parsers(generator):
     assert generator.queries['python'] is not None
 
 
-def test_detect_language(generator):
+def test_detect_language(fast_generator):
     """Test language detection from file extensions."""
-    assert generator._detect_language("test.py") == "python"
-    assert generator._detect_language("test.cpp") == "cpp"
-    assert generator._detect_language("test.unknown") is None
+    assert fast_generator._detect_language("test.py") == "python"
+    assert fast_generator._detect_language("test.cpp") == "cpp"
+    assert fast_generator._detect_language("test.unknown") is None
 
 
 @patch('gitlab.Gitlab')
-def test_get_file_content(mock_gitlab, generator):
+def test_get_file_content(mock_gitlab, fast_generator):
     """Test fetching file content."""
     # Setup mock GitLab instance and project
     mock_gitlab_instance = Mock()
@@ -143,14 +166,14 @@ def test_get_file_content(mock_gitlab, generator):
 
     # Test with a GitLab URL
     url = "https://example.com/group/project/-/blob/main/src/file.py"
-    content = generator._get_file_content(url)
+    content = fast_generator._get_file_content(url)
 
     assert content == SAMPLE_PYTHON_CONTENT
     mock_project.files.get.assert_called_once_with(file_path="src/file.py", ref="main")
 
 
 @patch('gitlab.Gitlab')
-def test_generate_call_stack(mock_gitlab, generator):
+def test_generate_call_stack(mock_gitlab, python_generator):
     """Test generating call stack from Python code."""
     # Setup mock GitLab instance and project
     mock_gitlab_instance = Mock()
@@ -163,7 +186,7 @@ def test_generate_call_stack(mock_gitlab, generator):
     mock_gitlab.return_value = mock_gitlab_instance
 
     url = "https://example.com/group/project/-/blob/main/src/file.py"
-    call_stack = generator.generate_call_stack(url, 7)
+    call_stack = python_generator.generate_call_stack(url, 7)
 
     assert len(call_stack) == 1
     assert call_stack[0]['function'] == 'main'
