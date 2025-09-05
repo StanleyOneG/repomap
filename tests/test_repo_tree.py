@@ -1342,3 +1342,225 @@ class ClassName:
     assert (
         class_info['instance_vars']['processor'] == 'Processor'
     ), "Should detect processor variable type"
+
+
+class TestRepoTreeCommitHash:
+    """Tests for repository tree commit hash functionality."""
+
+    @patch('repomap.providers.get_provider')
+    @patch.object(RepoTreeGenerator, '_get_file_content')
+    def test_generate_repo_tree_includes_commit_hash(self, mock_get_content, mock_get_provider):
+        """Test that generate_repo_tree includes commit hash in metadata."""
+        # Mock provider
+        mock_provider = Mock()
+        mock_provider.validate_ref.return_value = 'main'
+        mock_provider.get_last_commit_hash.return_value = 'abc123def456'
+        mock_provider.fetch_repo_structure.return_value = {
+            'test.py': {
+                'type': 'blob',
+                'mode': '100644',
+                'id': 'file123'
+            }
+        }
+        mock_get_provider.return_value = mock_provider
+        mock_get_content.return_value = 'print("hello")'
+
+        generator = RepoTreeGenerator(use_multiprocessing=False)
+        repo_tree = generator.generate_repo_tree('https://github.com/owner/repo')
+
+        # Verify commit hash is included in metadata
+        assert 'last_commit_hash' in repo_tree['metadata']
+        assert repo_tree['metadata']['last_commit_hash'] == 'abc123def456'
+        assert repo_tree['metadata']['url'] == 'https://github.com/owner/repo'
+        assert repo_tree['metadata']['ref'] == 'main'
+
+    @patch('repomap.providers.get_provider')
+    def test_is_repo_tree_up_to_date_no_file(self, mock_get_provider):
+        """Test is_repo_tree_up_to_date returns False when no file exists."""
+        generator = RepoTreeGenerator()
+        result = generator.is_repo_tree_up_to_date(
+            'https://github.com/owner/repo', 
+            'main', 
+            'nonexistent.json'
+        )
+        assert result is False
+
+    @patch('repomap.providers.get_provider')
+    def test_is_repo_tree_up_to_date_same_hash(self, mock_get_provider, tmp_path):
+        """Test is_repo_tree_up_to_date returns True when commit hashes match."""
+        # Create existing repo tree file
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/owner/repo',
+                'ref': 'main',
+                'last_commit_hash': 'same123hash'
+            },
+            'files': {}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        # Mock provider
+        mock_provider = Mock()
+        mock_provider.validate_ref.return_value = 'main'
+        mock_provider.get_last_commit_hash.return_value = 'same123hash'
+        mock_get_provider.return_value = mock_provider
+
+        generator = RepoTreeGenerator()
+        result = generator.is_repo_tree_up_to_date(
+            'https://github.com/owner/repo',
+            'main',
+            str(repo_tree_file)
+        )
+        assert result is True
+
+    @patch('repomap.providers.get_provider')
+    def test_is_repo_tree_up_to_date_different_hash(self, mock_get_provider, tmp_path):
+        """Test is_repo_tree_up_to_date returns False when commit hashes differ."""
+        # Create existing repo tree file
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/owner/repo',
+                'ref': 'main',
+                'last_commit_hash': 'old123hash'
+            },
+            'files': {}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        # Mock provider
+        mock_provider = Mock()
+        mock_provider.validate_ref.return_value = 'main'
+        mock_provider.get_last_commit_hash.return_value = 'new456hash'
+        mock_get_provider.return_value = mock_provider
+
+        generator = RepoTreeGenerator()
+        result = generator.is_repo_tree_up_to_date(
+            'https://github.com/owner/repo',
+            'main',
+            str(repo_tree_file)
+        )
+        assert result is False
+
+    @patch('repomap.providers.get_provider')
+    def test_is_repo_tree_up_to_date_different_url(self, mock_get_provider, tmp_path):
+        """Test is_repo_tree_up_to_date returns False when URLs differ."""
+        # Create existing repo tree file
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/other/repo',
+                'ref': 'main',
+                'last_commit_hash': 'same123hash'
+            },
+            'files': {}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        generator = RepoTreeGenerator()
+        result = generator.is_repo_tree_up_to_date(
+            'https://github.com/owner/repo',
+            'main',
+            str(repo_tree_file)
+        )
+        assert result is False
+
+    @patch('repomap.providers.get_provider')
+    def test_is_repo_tree_up_to_date_missing_hash(self, mock_get_provider, tmp_path):
+        """Test is_repo_tree_up_to_date returns False when existing tree has no commit hash."""
+        # Create existing repo tree file without commit hash
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/owner/repo',
+                'ref': 'main'
+            },
+            'files': {}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        generator = RepoTreeGenerator()
+        result = generator.is_repo_tree_up_to_date(
+            'https://github.com/owner/repo',
+            'main',
+            str(repo_tree_file)
+        )
+        assert result is False
+
+    @patch('builtins.print')  # Mock print to suppress output
+    @patch('repomap.providers.get_provider')
+    def test_generate_repo_tree_if_needed_up_to_date(self, mock_get_provider, mock_print, tmp_path):
+        """Test generate_repo_tree_if_needed loads existing tree when up to date."""
+        # Create existing repo tree file
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/owner/repo',
+                'ref': 'main',
+                'last_commit_hash': 'same123hash'
+            },
+            'files': {'test.py': {'language': 'python', 'ast': {}}}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        # Mock provider
+        mock_provider = Mock()
+        mock_provider.validate_ref.return_value = 'main'
+        mock_provider.get_last_commit_hash.return_value = 'same123hash'
+        mock_get_provider.return_value = mock_provider
+
+        generator = RepoTreeGenerator(use_multiprocessing=False)
+        
+        # Mock generate_repo_tree so we can verify it wasn't called
+        with patch.object(generator, 'generate_repo_tree') as mock_generate:
+            result = generator.generate_repo_tree_if_needed(
+                'https://github.com/owner/repo',
+                'main',
+                str(repo_tree_file)
+            )
+
+        # Should load existing tree, not generate new one
+        mock_generate.assert_not_called()
+        assert result == existing_tree
+
+    @patch('builtins.print')  # Mock print to suppress output
+    @patch('repomap.providers.get_provider')
+    @patch.object(RepoTreeGenerator, '_get_file_content')
+    def test_generate_repo_tree_if_needed_outdated(self, mock_get_content, mock_get_provider, mock_print, tmp_path):
+        """Test generate_repo_tree_if_needed generates new tree when outdated."""
+        # Create existing repo tree file
+        existing_tree = {
+            'metadata': {
+                'url': 'https://github.com/owner/repo',
+                'ref': 'main',
+                'last_commit_hash': 'old123hash'
+            },
+            'files': {}
+        }
+        repo_tree_file = tmp_path / 'repo_tree.json'
+        with open(repo_tree_file, 'w') as f:
+            json.dump(existing_tree, f)
+
+        # Mock provider
+        mock_provider = Mock()
+        mock_provider.validate_ref.return_value = 'main'
+        mock_provider.get_last_commit_hash.return_value = 'new456hash'
+        mock_provider.fetch_repo_structure.return_value = {}
+        mock_get_provider.return_value = mock_provider
+        mock_get_content.return_value = 'print("hello")'
+
+        generator = RepoTreeGenerator(use_multiprocessing=False)
+        result = generator.generate_repo_tree_if_needed(
+            'https://github.com/owner/repo',
+            'main',
+            str(repo_tree_file)
+        )
+
+        # Should generate new tree with new commit hash
+        assert result['metadata']['last_commit_hash'] == 'new456hash'

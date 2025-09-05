@@ -17,6 +17,9 @@ class MetadataModel(BaseModel):
     ref: Annotated[str, StringConstraints(min_length=1)] = Field(
         ..., description="Reference (branch/tag/commit) of the repository"
     )
+    last_commit_hash: Optional[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        default=None, description="Last commit hash for this reference"
+    )
 
 
 class FunctionCallSiteModel(BaseModel):

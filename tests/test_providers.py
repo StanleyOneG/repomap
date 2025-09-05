@@ -397,3 +397,125 @@ class TestLocalRepoProvider:
         assert structure['test.py']['type'] == 'blob'
         assert 'src' in structure
         assert isinstance(structure['src'], dict)
+
+
+def test_github_provider_get_last_commit_hash(mock_github):
+    """Test GitHub provider get_last_commit_hash method."""
+    mock_branch = MagicMock()
+    mock_commit = MagicMock()
+    mock_commit.sha = 'abc123def456'
+    mock_branch.commit = mock_commit
+    mock_github.get_repo.return_value.get_branch.return_value = mock_branch
+
+    provider = GitHubProvider()
+    commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
+    
+    assert commit_hash == 'abc123def456'
+
+
+def test_github_provider_get_last_commit_hash_default_branch(mock_github):
+    """Test GitHub provider get_last_commit_hash with default branch."""
+    mock_branch = MagicMock()
+    mock_commit = MagicMock()
+    mock_commit.sha = 'xyz789'
+    mock_branch.commit = mock_commit
+    mock_github.get_repo.return_value.default_branch = 'main'
+    mock_github.get_repo.return_value.get_branch.return_value = mock_branch
+
+    provider = GitHubProvider()
+    commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo')
+    
+    assert commit_hash == 'xyz789'
+
+
+def test_github_provider_get_last_commit_hash_tag(mock_github):
+    """Test GitHub provider get_last_commit_hash with tag reference."""
+    mock_tag = MagicMock()
+    mock_commit = MagicMock()
+    mock_commit.sha = 'tag123hash'
+    mock_tag.commit = mock_commit
+    
+    # Branch fails, tag succeeds
+    mock_github.get_repo.return_value.get_branch.side_effect = Exception()
+    mock_github.get_repo.return_value.get_tag.return_value = mock_tag
+
+    provider = GitHubProvider()
+    commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'v1.0.0')
+    
+    assert commit_hash == 'tag123hash'
+
+
+def test_gitlab_provider_get_last_commit_hash(mock_gitlab):
+    """Test GitLab provider get_last_commit_hash method."""
+    mock_commit = MagicMock()
+    mock_commit.id = 'gitlab123hash'
+    mock_gitlab.projects.get.return_value.commits.list.return_value = [mock_commit]
+
+    provider = GitLabProvider()
+    commit_hash = provider.get_last_commit_hash('https://gitlab.com/owner/repo', 'main')
+    
+    assert commit_hash == 'gitlab123hash'
+
+
+def test_gitlab_provider_get_last_commit_hash_default_branch(mock_gitlab):
+    """Test GitLab provider get_last_commit_hash with default branch."""
+    mock_commit = MagicMock()
+    mock_commit.id = 'gitlab456hash'
+    mock_gitlab.projects.get.return_value.commits.list.return_value = [mock_commit]
+    mock_gitlab.projects.get.return_value.default_branch = 'develop'
+
+    provider = GitLabProvider()
+    commit_hash = provider.get_last_commit_hash('https://gitlab.com/owner/repo')
+    
+    assert commit_hash == 'gitlab456hash'
+
+
+class TestLocalRepoProviderCommitHash:
+    """Tests for LocalRepoProvider get_last_commit_hash functionality."""
+
+    @patch('repomap.providers.LocalRepoProvider._clone_repo')
+    @patch('git.Repo')
+    def test_get_last_commit_hash_success(self, mock_git_repo, mock_clone):
+        """Test successful commit hash retrieval from local clone."""
+        from pathlib import Path
+        mock_clone.return_value = Path('/tmp/test_repo')
+        mock_repo = MagicMock()
+        mock_commit = MagicMock()
+        mock_commit.hexsha = 'local123hash'
+        mock_repo.head.commit = mock_commit
+        mock_git_repo.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
+        
+        assert commit_hash == 'local123hash'
+        mock_clone.assert_called_once_with('https://github.com/owner/repo', 'main')
+
+    def test_get_last_commit_hash_no_local_clone(self):
+        """Test get_last_commit_hash falls back to API when local clone is disabled."""
+        with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            mock_api_provider = MagicMock()
+            mock_api_provider.get_last_commit_hash.return_value = 'api123hash'
+            mock_get_provider.return_value = mock_api_provider
+
+            provider = LocalRepoProvider(use_local_clone=False)
+            commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
+
+            assert commit_hash == 'api123hash'
+            mock_get_provider.assert_called_once()
+
+    @patch('repomap.providers.LocalRepoProvider._clone_repo')
+    @patch('git.Repo')
+    def test_get_last_commit_hash_with_fallback(self, mock_git_repo, mock_clone):
+        """Test commit hash retrieval with fallback to API on local failure."""
+        mock_clone.side_effect = Exception("Clone failed")
+        
+        with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            mock_api_provider = MagicMock()
+            mock_api_provider.get_last_commit_hash.return_value = 'fallback123hash'
+            mock_get_provider.return_value = mock_api_provider
+
+            provider = LocalRepoProvider()
+            commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
+
+            assert commit_hash == 'fallback123hash'
