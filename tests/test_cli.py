@@ -150,6 +150,60 @@ def test_main_repo_tree_without_local_clone(mock_generator):
     mock_instance.save_repo_tree.assert_called_once()
 
 
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_with_branch_ref(mock_generator):
+    """Test main function with repo-tree generation using specific branch ref."""
+    mock_instance = MagicMock()
+    mock_instance.generate_repo_tree.return_value = {"files": {}}
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'develop']):
+        result = main()
+
+    assert result == 0
+    mock_generator.assert_called_with(None, use_local_clone=True)
+    # Verify that generate_repo_tree was called with the correct ref
+    args, kwargs = mock_instance.generate_repo_tree.call_args
+    assert args[1] == 'develop'  # ref is the second positional argument
+    mock_instance.save_repo_tree.assert_called_once()
+
+
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_with_tag_ref(mock_generator):
+    """Test main function with repo-tree generation using specific tag ref."""
+    mock_instance = MagicMock()
+    mock_instance.generate_repo_tree.return_value = {"files": {}}
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'v2.1.0']):
+        result = main()
+
+    assert result == 0
+    mock_generator.assert_called_with(None, use_local_clone=True)
+    # Verify that generate_repo_tree was called with the correct ref
+    args, kwargs = mock_instance.generate_repo_tree.call_args
+    assert args[1] == 'v2.1.0'  # ref is the second positional argument
+    mock_instance.save_repo_tree.assert_called_once()
+
+
+@patch('repomap.cli.RepoTreeGenerator')
+def test_main_repo_tree_with_ref_no_local_clone(mock_generator):
+    """Test main function with repo-tree generation using ref and no local clone."""
+    mock_instance = MagicMock()
+    mock_instance.generate_repo_tree.return_value = {"files": {}}
+    mock_generator.return_value = mock_instance
+
+    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'feature-branch', '--no-local-clone']):
+        result = main()
+
+    assert result == 0
+    mock_generator.assert_called_with(None, use_local_clone=False)
+    # Verify that generate_repo_tree was called with the correct ref
+    args, kwargs = mock_instance.generate_repo_tree.call_args
+    assert args[1] == 'feature-branch'  # ref is the second positional argument
+    mock_instance.save_repo_tree.assert_called_once()
+
+
 @patch('repomap.cli.CallStackGenerator')
 def test_main_call_stack(mock_generator):
     """Test main function with call stack generation."""
