@@ -21,21 +21,24 @@ from .providers import get_provider
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
 
-    def __init__(self, token: Optional[str] = None, use_multiprocessing: bool = True):
+    def __init__(self, token: Optional[str] = None, use_multiprocessing: bool = True, use_local_clone: bool = True):
         """Initialize the repository tree generator.
 
         Args:
             token: Optional GitLab access token for authentication
             use_multiprocessing: Whether to use multiprocessing for file processing
+            use_local_clone: Whether to use local cloning for improved performance (default: True)
         """
         self.token = token
         self.use_multiprocessing = use_multiprocessing
+        self.use_local_clone = use_local_clone
         self.call_stack_gen = CallStackGenerator(token=self.token)
         self.parsers = self.call_stack_gen.parsers
         self.queries = self.call_stack_gen.queries
         self.provider = None
         self._current_classes = {}
         self.method_return_types = {}
+        self._local_clone_path = None
 
     def _get_file_content(self, file_url: str) -> Optional[str]:
         """Fetch file content from URL using CallStackGenerator's implementation.
@@ -669,14 +672,25 @@ class RepoTreeGenerator:
 
     @staticmethod
     def _process_file_worker(
-        file_info: Tuple[str, Dict[str, Any], str, str, Optional[str]]
+        file_info: Tuple[str, Dict[str, Any], str, str, Optional[str], bool, Optional[str]]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
-        path, item, repo_url, ref, token = file_info
-        processor = RepoTreeGenerator(token=token)
+        path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
+        processor = RepoTreeGenerator(token=token, use_local_clone=use_local_clone)
         try:
             lang = processor._detect_language(path)
             if lang:
-                content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+                if use_local_clone and local_clone_path:
+                    # Read from local filesystem
+                    from pathlib import Path
+                    file_path = Path(local_clone_path) / path
+                    if file_path.exists() and file_path.is_file():
+                        content = file_path.read_text(encoding='utf-8', errors='ignore')
+                    else:
+                        return path, None
+                else:
+                    # Use API method
+                    content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+                
                 if content:
                     ast_data = processor._parse_file_ast(content, lang)
                     return path, {"language": lang, "ast": ast_data}
@@ -690,7 +704,7 @@ class RepoTreeGenerator:
         ref: Optional[str] = None,
     ) -> Dict[str, Any]:
         if not self.provider:
-            self.provider = get_provider(repo_url, self.token)
+            self.provider = get_provider(repo_url, self.token, self.use_local_clone)
 
         try:
             ref = self.provider.validate_ref(repo_url, ref)
@@ -724,9 +738,15 @@ class RepoTreeGenerator:
 
         collect_files(repo_structure)
 
+        # Get local clone path if using local clone
+        local_clone_path = None
+        if self.use_local_clone and hasattr(self.provider, '_cloned_repos'):
+            cache_key = f"{repo_url}#{ref or 'default'}"
+            local_clone_path = str(self.provider._cloned_repos.get(cache_key, ''))
+
         if self.use_multiprocessing and files_to_process:
             files_to_process_mp = [
-                (path, item, repo_url, ref, self.token)
+                (path, item, repo_url, ref, self.token, self.use_local_clone, local_clone_path)
                 for path, item, repo_url, ref in files_to_process
             ]
 
@@ -749,9 +769,20 @@ class RepoTreeGenerator:
                 try:
                     lang = self._detect_language(path)
                     if lang:
-                        content = self._get_file_content(
-                            f"{repo_url}/-/blob/{ref}/{path}"
-                        )
+                        if self.use_local_clone and local_clone_path:
+                            # Read from local filesystem
+                            from pathlib import Path
+                            file_path = Path(local_clone_path) / path
+                            if file_path.exists() and file_path.is_file():
+                                content = file_path.read_text(encoding='utf-8', errors='ignore')
+                            else:
+                                continue
+                        else:
+                            # Use API method
+                            content = self._get_file_content(
+                                f"{repo_url}/-/blob/{ref}/{path}"
+                            )
+                        
                         if content:
                             ast_data = self._parse_file_ast(content, lang)
                             repo_tree["files"][path] = {
@@ -760,6 +791,10 @@ class RepoTreeGenerator:
                             }
                 except Exception:
                     pass
+
+        # Cleanup temporary clones if using LocalRepoProvider
+        if hasattr(self.provider, 'cleanup'):
+            self.provider.cleanup()
 
         return repo_tree
 

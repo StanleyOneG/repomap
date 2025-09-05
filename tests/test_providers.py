@@ -5,18 +5,30 @@ from unittest.mock import MagicMock, patch
 import gitlab
 import pytest
 
-from repomap.providers import GitHubProvider, GitLabProvider, get_provider
+from repomap.providers import GitHubProvider, GitLabProvider, LocalRepoProvider, get_provider
 
 
 def test_get_provider_github():
-    """Test get_provider returns GitHubProvider for GitHub URLs."""
+    """Test get_provider returns LocalRepoProvider by default for GitHub URLs."""
     provider = get_provider('https://github.com/owner/repo')
-    assert isinstance(provider, GitHubProvider)
+    assert isinstance(provider, LocalRepoProvider)
 
 
 def test_get_provider_gitlab():
-    """Test get_provider returns GitLabProvider for GitLab URLs."""
+    """Test get_provider returns LocalRepoProvider by default for GitLab URLs."""
     provider = get_provider('https://gitlab.com/owner/repo')
+    assert isinstance(provider, LocalRepoProvider)
+
+
+def test_get_provider_github_no_local_clone():
+    """Test get_provider returns GitHubProvider when local clone is disabled for GitHub URLs."""
+    provider = get_provider('https://github.com/owner/repo', use_local_clone=False)
+    assert isinstance(provider, GitHubProvider)
+
+
+def test_get_provider_gitlab_no_local_clone():
+    """Test get_provider returns GitLabProvider when local clone is disabled for GitLab URLs."""
+    provider = get_provider('https://gitlab.com/owner/repo', use_local_clone=False)
     assert isinstance(provider, GitLabProvider)
 
 
@@ -164,3 +176,117 @@ def test_gitlab_provider_get_file_content(mock_gitlab):
         'https://gitlab.com/owner/repo/-/blob/main/file.py'
     )
     assert content == 'file content'
+
+
+class TestLocalRepoProvider:
+    """Tests for LocalRepoProvider."""
+
+    def test_init_with_local_clone_enabled(self):
+        """Test LocalRepoProvider initialization with local clone enabled."""
+        provider = LocalRepoProvider(use_local_clone=True)
+        assert provider.use_local_clone is True
+        assert provider._temp_dirs == []
+        assert provider._cloned_repos == {}
+
+    def test_init_with_local_clone_disabled(self):
+        """Test LocalRepoProvider initialization with local clone disabled."""
+        provider = LocalRepoProvider(use_local_clone=False)
+        assert provider.use_local_clone is False
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_success(self, mock_clone, mock_tempdir):
+        """Test successful repository cloning."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider()
+        result = provider._clone_repo('https://github.com/owner/repo')
+
+        assert str(result) == '/tmp/test_dir/repo'
+        mock_clone.assert_called_once()
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_with_token(self, mock_clone, mock_tempdir):
+        """Test repository cloning with authentication token."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_repo.active_branch.name = 'main'
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider(token='test_token')
+        provider._clone_repo('https://github.com/owner/repo')
+
+        # Verify that the clone URL was modified to include the token
+        args, kwargs = mock_clone.call_args
+        assert 'test_token@github.com' in args[0]
+
+    @patch('shutil.rmtree')
+    def test_cleanup(self, mock_rmtree):
+        """Test cleanup of temporary directories."""
+        provider = LocalRepoProvider()
+        provider._temp_dirs = ['/tmp/dir1', '/tmp/dir2']
+        provider._cloned_repos = {'key': 'path'}
+        
+        with patch('os.path.exists', return_value=True):
+            provider.cleanup()
+
+        assert provider._temp_dirs == []
+        assert provider._cloned_repos == {}
+        assert mock_rmtree.call_count == 2
+
+    def test_get_file_content_no_local_clone(self):
+        """Test get_file_content falls back to API when local clone is disabled."""
+        with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            mock_api_provider = MagicMock()
+            mock_api_provider.get_file_content.return_value = 'file content'
+            mock_get_provider.return_value = mock_api_provider
+
+            provider = LocalRepoProvider(use_local_clone=False)
+            content = provider.get_file_content('https://github.com/owner/repo/blob/main/file.py')
+
+            assert content == 'file content'
+            mock_get_provider.assert_called_once()
+
+    def test_fetch_repo_structure_no_local_clone(self):
+        """Test fetch_repo_structure falls back to API when local clone is disabled."""
+        with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            mock_api_provider = MagicMock()
+            mock_api_provider.fetch_repo_structure.return_value = {'file.py': {'type': 'blob'}}
+            mock_get_provider.return_value = mock_api_provider
+
+            provider = LocalRepoProvider(use_local_clone=False)
+            structure = provider.fetch_repo_structure('https://github.com/owner/repo')
+
+            assert structure == {'file.py': {'type': 'blob'}}
+            mock_get_provider.assert_called_once()
+
+    @patch('pathlib.Path.iterdir')
+    def test_build_structure_from_path(self, mock_iterdir):
+        """Test building repository structure from local filesystem."""
+        from pathlib import Path
+        
+        # Mock file and directory items
+        mock_file = MagicMock(spec=Path)
+        mock_file.name = 'test.py'
+        mock_file.is_file.return_value = True
+        mock_file.is_dir.return_value = False
+        
+        mock_dir = MagicMock(spec=Path)
+        mock_dir.name = 'src'
+        mock_dir.is_file.return_value = False
+        mock_dir.is_dir.return_value = True
+        mock_dir.iterdir.return_value = []
+        
+        mock_iterdir.return_value = [mock_file, mock_dir]
+        
+        provider = LocalRepoProvider()
+        structure = provider._build_structure_from_path(Path('/fake/path'))
+        
+        assert 'test.py' in structure
+        assert structure['test.py']['type'] == 'blob'
+        assert 'src' in structure
+        assert isinstance(structure['src'], dict)
