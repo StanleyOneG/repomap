@@ -1,8 +1,11 @@
 """Module for generating repository AST tree."""
 
 import json
+import logging
 import multiprocessing
 import os
+import signal
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from tree_sitter import Node
@@ -10,12 +13,37 @@ from tree_sitter import Node
 from .callstack import CallStackGenerator
 from .providers import get_provider
 
-# logger = logging.getLogger(__name__)
-# logger.setLevel(logging.DEBUG)
-# handler = logging.StreamHandler()
-# formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
-# handler.setFormatter(formatter)
-# logger.addHandler(handler)
+logger = logging.getLogger(__name__)
+
+# Remove old logging setup as we now use proper logger above
+
+class TimeoutError(Exception):
+    """Raised when AST parsing exceeds the timeout."""
+    pass
+
+
+def timeout_handler(signum, frame):
+    """Signal handler for timeout."""
+    raise TimeoutError("AST parsing timed out")
+
+
+def with_timeout(timeout_seconds: int):
+    """Decorator to add timeout to function execution."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            # Set up the signal alarm
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(timeout_seconds)
+            
+            try:
+                result = func(*args, **kwargs)
+                return result
+            finally:
+                # Clean up the alarm
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
+        return wrapper
+    return decorator
 
 
 class RepoTreeGenerator:
@@ -78,7 +106,11 @@ class RepoTreeGenerator:
             lang: Programming language being parsed
         """
         stack = [(node, current_class)]
-        while stack:
+        iteration_count = 0
+        MAX_ITERATIONS = 50000  # Prevent infinite loops
+        
+        while stack and iteration_count < MAX_ITERATIONS:
+            iteration_count += 1
             current_node, current_class = stack.pop()
 
             # Process C structs and typedefs
@@ -162,24 +194,28 @@ class RepoTreeGenerator:
 
             # Process Go type definitions (structs/interfaces)
             if lang == 'go' and current_node.type == 'type_declaration':
-                # Handle Go type declarations (struct, interface, etc.)
-                for child in current_node.children:
-                    if child.type == 'type_spec':
-                        type_name_node = None
-                        for spec_child in child.children:
-                            if spec_child.type == 'type_identifier':
-                                type_name_node = spec_child
-                                break
-                        
-                        if type_name_node:
-                            type_name = type_name_node.text.decode('utf8')
-                            self._current_classes[type_name] = {
-                                "instance_vars": {},
-                                "methods": [],
-                                "base_classes": [],
-                                "start_line": current_node.start_point[0],
-                                "end_line": current_node.end_point[0],
-                            }
+                try:
+                    # Handle Go type declarations (struct, interface, etc.)
+                    for child in current_node.children[:10]:  # Limit children to prevent excessive iteration
+                        if child.type == 'type_spec':
+                            type_name_node = None
+                            for spec_child in child.children[:5]:  # Limit nested children
+                                if spec_child.type == 'type_identifier':
+                                    type_name_node = spec_child
+                                    break
+                            
+                            if type_name_node:
+                                type_name = type_name_node.text.decode('utf8')
+                                self._current_classes[type_name] = {
+                                    "instance_vars": {},
+                                    "methods": [],
+                                    "base_classes": [],
+                                    "start_line": current_node.start_point[0],
+                                    "end_line": current_node.end_point[0],
+                                }
+                except Exception as e:
+                    logger.warning(f"Error processing Go type declaration: {e}")
+                    continue
 
             # Process function/method definitions
             if current_node.type in ('function_definition', 'method_definition', 'function_declaration', 'method_declaration'):
@@ -188,44 +224,48 @@ class RepoTreeGenerator:
 
                 # Find function name and body
                 if lang == 'go':
-                    # Handle Go function and method declarations
-                    if current_node.type == 'function_declaration':
-                        # For regular functions: func main() { ... }
-                        for child in current_node.children:
-                            if child.type == 'identifier':
-                                name_node = child
-                                break
-                    elif current_node.type == 'method_declaration':
-                        # For methods: func (u *User) GetName() { ... }
-                        # Find the method name (field_identifier)
-                        for child in current_node.children:
-                            if child.type == 'field_identifier':
-                                name_node = child
-                                break
-                        # Also extract the receiver type for context
-                        receiver_type = None
-                        for child in current_node.children:
-                            if child.type == 'parameter_list':
-                                # This is the receiver parameter list
-                                for param_child in child.children:
-                                    if param_child.type == 'parameter_declaration':
-                                        for param_subchild in param_child.children:
-                                            if param_subchild.type == 'pointer_type':
-                                                for ptr_child in param_subchild.children:
-                                                    if ptr_child.type == 'type_identifier':
-                                                        receiver_type = ptr_child.text.decode('utf8')
-                                                        break
-                                            elif param_subchild.type == 'type_identifier':
-                                                receiver_type = param_subchild.text.decode('utf8')
-                                        break
-                                break
-                        if receiver_type:
-                            current_class = receiver_type
-                    
-                    # Find body node for Go
-                    body_node = next(
-                        (c for c in current_node.children if c.type == 'block'), None
-                    )
+                    try:
+                        # Handle Go function and method declarations with bounds checking
+                        if current_node.type == 'function_declaration':
+                            # For regular functions: func main() { ... }
+                            for child in current_node.children[:10]:  # Limit children iteration
+                                if child.type == 'identifier':
+                                    name_node = child
+                                    break
+                        elif current_node.type == 'method_declaration':
+                            # For methods: func (u *User) GetName() { ... }
+                            # Find the method name (field_identifier)
+                            for child in current_node.children[:15]:  # Limit children iteration
+                                if child.type == 'field_identifier':
+                                    name_node = child
+                                    break
+                            # Also extract the receiver type for context
+                            receiver_type = None
+                            for child in current_node.children[:10]:  # Limit iteration
+                                if child.type == 'parameter_list':
+                                    # This is the receiver parameter list
+                                    for param_child in child.children[:5]:  # Limit nested iteration
+                                        if param_child.type == 'parameter_declaration':
+                                            for param_subchild in param_child.children[:5]:  # Limit nested iteration
+                                                if param_subchild.type == 'pointer_type':
+                                                    for ptr_child in param_subchild.children[:3]:  # Limit deeply nested iteration
+                                                        if ptr_child.type == 'type_identifier':
+                                                            receiver_type = ptr_child.text.decode('utf8')
+                                                            break
+                                                elif param_subchild.type == 'type_identifier':
+                                                    receiver_type = param_subchild.text.decode('utf8')
+                                            break
+                                    break
+                            if receiver_type:
+                                current_class = receiver_type
+                        
+                        # Find body node for Go
+                        body_node = next(
+                            (c for c in current_node.children[:15] if c.type == 'block'), None  # Limit search
+                        )
+                    except Exception as e:
+                        logger.warning(f"Error processing Go function/method declaration: {e}")
+                        continue
                 elif lang == 'cpp':
                     declarator = next(
                         (
@@ -411,6 +451,10 @@ class RepoTreeGenerator:
             else:
                 for child in reversed(current_node.children):
                     stack.append((child, current_class))
+        
+        # Warn if we hit iteration limit
+        if iteration_count >= MAX_ITERATIONS:
+            logger.warning(f"Hit iteration limit ({MAX_ITERATIONS}) in _find_functions for language: {lang}")
 
     def _find_function_calls(  # noqa: C901
         self,
@@ -649,6 +693,7 @@ class RepoTreeGenerator:
 
         return None
 
+    @with_timeout(30)  # 30 second timeout for AST parsing
     def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:  # noqa: C901
         parser = self.parsers[lang]
         tree = parser.parse(bytes(content, 'utf8'))
@@ -772,7 +817,9 @@ class RepoTreeGenerator:
         path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
         # Create processor with local cloning disabled to avoid worker processes trying to clone
         processor = RepoTreeGenerator(token=token, use_local_clone=False)
+        
         try:
+            start_time = time.time()
             lang = processor._detect_language(path)
             if lang:
                 if use_local_clone and local_clone_path:
@@ -788,10 +835,21 @@ class RepoTreeGenerator:
                     content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
                 
                 if content:
-                    ast_data = processor._parse_file_ast(content, lang)
-                    return path, {"language": lang, "ast": ast_data}
-        except Exception:
-            pass
+                    try:
+                        ast_data = processor._parse_file_ast(content, lang)
+                        elapsed = time.time() - start_time
+                        if elapsed > 10:  # Log slow files
+                            logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                        return path, {"language": lang, "ast": ast_data}
+                    except TimeoutError:
+                        logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
+                        return path, None
+                    except Exception as e:
+                        logger.error(f"AST parsing error for {path} ({lang}): {e}")
+                        return path, None
+        except Exception as e:
+            logger.error(f"Worker error processing {path}: {e}")
+            
         return path, None
 
     def generate_repo_tree(  # noqa: C901
@@ -874,6 +932,7 @@ class RepoTreeGenerator:
         else:
             for path, item, repo_url, ref in files_to_process:
                 try:
+                    start_time = time.time()
                     lang = self._detect_language(path)
                     if lang:
                         if self.use_local_clone and local_clone_path:
@@ -891,13 +950,24 @@ class RepoTreeGenerator:
                             )
                         
                         if content:
-                            ast_data = self._parse_file_ast(content, lang)
-                            repo_tree["files"][path] = {
-                                "language": lang,
-                                "ast": ast_data,
-                            }
-                except Exception:
-                    pass
+                            try:
+                                ast_data = self._parse_file_ast(content, lang)
+                                elapsed = time.time() - start_time
+                                if elapsed > 10:  # Log slow files
+                                    logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                                repo_tree["files"][path] = {
+                                    "language": lang,
+                                    "ast": ast_data,
+                                }
+                            except TimeoutError:
+                                logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
+                                continue
+                            except Exception as e:
+                                logger.error(f"AST parsing error for {path} ({lang}): {e}")
+                                continue
+                except Exception as e:
+                    logger.error(f"Error processing {path}: {e}")
+                    continue
 
         # Cleanup temporary clones if using LocalRepoProvider
         if hasattr(self.provider, 'cleanup'):
