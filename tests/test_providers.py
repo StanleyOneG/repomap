@@ -535,3 +535,155 @@ class TestLocalRepoProviderCommitHash:
             commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
 
             assert commit_hash == 'fallback123hash'
+
+
+class TestLocalRepoProviderDockerAuth:
+    """Tests for LocalRepoProvider Docker authentication fixes."""
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_docker_auth_failure_fallback(self, mock_clone, mock_tempdir):
+        """Test that Docker authentication failures trigger proper fallback."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        
+        # Simulate Docker authentication error
+        auth_error = git.exc.GitCommandError(
+            command='git clone',
+            status=128,
+            stderr='fatal: could not read Username for \'https://git-testing.example.com\': No such device or address'
+        )
+        mock_clone.side_effect = auth_error
+
+        provider = LocalRepoProvider(token='test_token')
+        
+        with pytest.raises(git.exc.GitCommandError) as exc_info:
+            provider._clone_repo('https://git-testing.example.com/owner/repo')
+        
+        # Verify the error message indicates authentication failure
+        assert 'Authentication failed for repository' in str(exc_info.value.stderr)
+
+    @patch('tempfile.mkdtemp') 
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_git_env_configuration(self, mock_clone, mock_tempdir):
+        """Test that git environment variables are properly configured for Docker."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider(token='test_token')
+        provider._clone_repo('https://github.com/owner/repo')
+
+        # Verify clone_from was called with proper environment variables
+        mock_clone.assert_called_once()
+        args, kwargs = mock_clone.call_args
+        
+        # Check that env parameter was passed
+        assert 'env' in kwargs
+        git_env = kwargs['env']
+        assert git_env.get('GIT_TERMINAL_PROMPT') == '0'
+        assert git_env.get('GIT_ASKPASS') == 'echo'
+        assert 'BatchMode=yes' in git_env.get('GIT_SSH_COMMAND', '')
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_gitlab_private_instance_auth(self, mock_clone, mock_tempdir):
+        """Test authentication URL construction for private GitLab instances."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        mock_repo = MagicMock()
+        mock_clone.return_value = mock_repo
+
+        provider = LocalRepoProvider(token='private_token')
+        provider._clone_repo('https://git-testing.devsec.astralinux.ru/astra/containerd')
+
+        # Verify that the clone URL was constructed with OAuth2 token
+        args, kwargs = mock_clone.call_args
+        clone_url = args[0]
+        assert 'oauth2:private_token@git-testing.devsec.astralinux.ru' in clone_url
+
+    def test_get_file_content_auth_fallback(self):
+        """Test get_file_content falls back to API on authentication errors."""
+        with patch('repomap.providers.LocalRepoProvider._clone_repo') as mock_clone:
+            auth_error = git.exc.GitCommandError(
+                command='git clone',
+                status=128,
+                stderr='fatal: could not read Username for \'https://private.gitlab.com\': No such device or address'
+            )
+            mock_clone.side_effect = auth_error
+
+            with patch('repomap.providers._get_api_provider') as mock_get_provider:
+                mock_api_provider = MagicMock()
+                mock_api_provider.get_file_content.return_value = 'file content from API'
+                mock_get_provider.return_value = mock_api_provider
+
+                provider = LocalRepoProvider()
+                content = provider.get_file_content('https://private.gitlab.com/owner/repo/-/blob/main/file.py')
+
+                assert content == 'file content from API'
+                mock_get_provider.assert_called_once()
+
+    def test_fetch_repo_structure_auth_fallback(self):
+        """Test fetch_repo_structure falls back to API on authentication errors."""  
+        with patch('repomap.providers.LocalRepoProvider._clone_repo') as mock_clone:
+            auth_error = git.exc.GitCommandError(
+                command='git clone',
+                status=128,
+                stderr='fatal: could not read Username for \'https://private.gitlab.com\': No such device or address'
+            )
+            mock_clone.side_effect = auth_error
+
+            with patch('repomap.providers._get_api_provider') as mock_get_provider:
+                mock_api_provider = MagicMock()
+                mock_api_provider.fetch_repo_structure.return_value = {'file.py': {'type': 'blob'}}
+                mock_get_provider.return_value = mock_api_provider
+
+                provider = LocalRepoProvider()
+                structure = provider.fetch_repo_structure('https://private.gitlab.com/owner/repo')
+
+                assert structure == {'file.py': {'type': 'blob'}}
+                mock_get_provider.assert_called_once()
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    @patch('shutil.rmtree')
+    def test_validate_ref_auth_fallback(self, mock_rmtree, mock_clone, mock_tempdir):
+        """Test validate_ref falls back to API on authentication errors."""
+        mock_tempdir.return_value = '/tmp/validate_dir'
+        auth_error = git.exc.GitCommandError(
+            command='git clone',
+            status=128,
+            stderr='fatal: could not read Username for \'https://private.gitlab.com\': No such device or address'
+        )
+        mock_clone.side_effect = auth_error
+
+        with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            mock_api_provider = MagicMock()
+            mock_api_provider.validate_ref.return_value = 'main'
+            mock_get_provider.return_value = mock_api_provider
+
+            provider = LocalRepoProvider()
+            result = provider.validate_ref('https://private.gitlab.com/owner/repo', 'main')
+
+            assert result == 'main'
+            mock_get_provider.assert_called_once()
+
+    @patch('tempfile.mkdtemp')
+    @patch('git.Repo.clone_from')
+    def test_clone_repo_non_auth_git_error(self, mock_clone, mock_tempdir):
+        """Test that non-authentication git errors are handled differently."""
+        mock_tempdir.return_value = '/tmp/test_dir'
+        
+        # Simulate non-authentication git error
+        git_error = git.exc.GitCommandError(
+            command='git clone',
+            status=128,
+            stderr='fatal: repository not found'
+        )
+        mock_clone.side_effect = git_error
+
+        provider = LocalRepoProvider()
+        
+        with pytest.raises(RuntimeError) as exc_info:
+            provider._clone_repo('https://github.com/owner/nonexistent-repo')
+        
+        # Verify it's a RuntimeError, not a GitCommandError
+        assert 'Failed to clone repository' in str(exc_info.value)
