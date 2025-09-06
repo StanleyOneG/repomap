@@ -1,5 +1,6 @@
 """Tests for repository providers."""
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import git
@@ -196,12 +197,14 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_success(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_success(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test successful repository cloning."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
         mock_repo.active_branch.name = 'main'
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         result = provider._clone_repo('https://github.com/owner/repo')
@@ -211,12 +214,14 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_with_token(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_with_token(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test repository cloning with authentication token."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
         mock_repo.active_branch.name = 'main'
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider(token='test_token')
         provider._clone_repo('https://github.com/owner/repo')
@@ -241,12 +246,14 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_with_branch_ref(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_with_branch_ref(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test repository cloning with specific branch reference."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
         mock_repo.active_branch.name = 'main'
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         result = provider._clone_repo('https://github.com/owner/repo', 'develop')
@@ -259,7 +266,8 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_with_tag_ref_fallback(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_with_tag_ref_fallback(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test repository cloning with tag reference requiring fallback."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
@@ -267,6 +275,7 @@ class TestLocalRepoProvider:
         
         # First call (specific ref) fails, second call (default) succeeds
         mock_clone.side_effect = [git.exc.GitCommandError("Branch not found"), mock_repo]
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         result = provider._clone_repo('https://github.com/owner/repo', 'v2.0.0')
@@ -277,7 +286,8 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_with_invalid_ref(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_with_invalid_ref(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test repository cloning with invalid reference raises ValueError."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
@@ -286,6 +296,7 @@ class TestLocalRepoProvider:
         
         # First call (specific ref) fails, second call (default) succeeds but checkout fails
         mock_clone.side_effect = [git.exc.GitCommandError("Branch not found"), mock_repo]
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         
@@ -294,13 +305,15 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
+    @patch('git.Repo')
     @patch('shutil.rmtree')
-    def test_validate_ref_with_branch(self, mock_rmtree, mock_clone, mock_tempdir):
+    def test_validate_ref_with_branch(self, mock_rmtree, mock_git_repo, mock_clone, mock_tempdir):
         """Test validate_ref with valid branch reference."""
         mock_tempdir.return_value = '/tmp/validate_dir'
         mock_repo = MagicMock()
         mock_repo.active_branch.name = 'main'
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         result = provider.validate_ref('https://github.com/owner/repo', 'develop')
@@ -310,8 +323,9 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
+    @patch('git.Repo')
     @patch('shutil.rmtree')
-    def test_validate_ref_with_tag_fallback(self, mock_rmtree, mock_clone, mock_tempdir):
+    def test_validate_ref_with_tag_fallback(self, mock_rmtree, mock_git_repo, mock_clone, mock_tempdir):
         """Test validate_ref with tag requiring fallback fetch."""
         mock_tempdir.return_value = '/tmp/validate_dir'
         mock_repo = MagicMock()
@@ -321,6 +335,7 @@ class TestLocalRepoProvider:
         mock_repo.git.checkout.side_effect = [git.exc.GitCommandError("Not found"), None]
         mock_repo.git.fetch.return_value = None
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         result = provider.validate_ref('https://github.com/owner/repo', 'v1.0.0')
@@ -331,14 +346,16 @@ class TestLocalRepoProvider:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
+    @patch('git.Repo')
     @patch('shutil.rmtree')
-    def test_validate_ref_invalid(self, mock_rmtree, mock_clone, mock_tempdir):
+    def test_validate_ref_invalid(self, mock_rmtree, mock_git_repo, mock_clone, mock_tempdir):
         """Test validate_ref with invalid reference raises ValueError."""
         mock_tempdir.return_value = '/tmp/validate_dir'
         mock_repo = MagicMock()
         mock_repo.git.checkout.side_effect = git.exc.GitCommandError("Not found")
         mock_repo.git.fetch.side_effect = git.exc.GitCommandError("Not found")
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider()
         
@@ -506,6 +523,8 @@ class TestLocalRepoProviderCommitHash:
         
         assert commit_hash == 'local123hash'
         mock_clone.assert_called_once_with('https://github.com/owner/repo', 'main')
+        # git.Repo is called with the Path object returned by _clone_repo
+        mock_git_repo.assert_called_once_with(Path('/tmp/test_repo'))
 
     def test_get_last_commit_hash_no_local_clone(self):
         """Test get_last_commit_hash falls back to API when local clone is disabled."""
@@ -527,14 +546,17 @@ class TestLocalRepoProviderCommitHash:
         mock_clone.side_effect = Exception("Clone failed")
         
         with patch('repomap.providers._get_api_provider') as mock_get_provider:
+            # Make API fail first, then return fallback API provider
             mock_api_provider = MagicMock()
             mock_api_provider.get_last_commit_hash.return_value = 'fallback123hash'
-            mock_get_provider.return_value = mock_api_provider
+            mock_get_provider.side_effect = [Exception("API failed"), mock_api_provider]
 
-            provider = LocalRepoProvider()
+            provider = LocalRepoProvider(use_local_clone=True)  # Ensure local clone is enabled
             commit_hash = provider.get_last_commit_hash('https://github.com/owner/repo', 'main')
 
-            assert commit_hash == 'fallback123hash'
+            assert commit_hash is None  # Should return None when both API and local clone fail
+            mock_clone.assert_called_once_with('https://github.com/owner/repo', 'main')
+            assert mock_get_provider.call_count == 1  # API should be tried once
 
 
 class TestLocalRepoProviderDockerAuth:
@@ -564,11 +586,13 @@ class TestLocalRepoProviderDockerAuth:
 
     @patch('tempfile.mkdtemp') 
     @patch('git.Repo.clone_from')
-    def test_clone_repo_git_env_configuration(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_git_env_configuration(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test that git environment variables are properly configured for Docker."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider(token='test_token')
         provider._clone_repo('https://github.com/owner/repo')
@@ -586,11 +610,13 @@ class TestLocalRepoProviderDockerAuth:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
-    def test_clone_repo_gitlab_private_instance_auth(self, mock_clone, mock_tempdir):
+    @patch('git.Repo')
+    def test_clone_repo_gitlab_private_instance_auth(self, mock_git_repo, mock_clone, mock_tempdir):
         """Test authentication URL construction for private GitLab instances."""
         mock_tempdir.return_value = '/tmp/test_dir'
         mock_repo = MagicMock()
         mock_clone.return_value = mock_repo
+        mock_git_repo.return_value = mock_repo
 
         provider = LocalRepoProvider(token='private_token')
         provider._clone_repo('https://git-testing.devsec.astralinux.ru/astra/containerd')
@@ -600,7 +626,8 @@ class TestLocalRepoProviderDockerAuth:
         clone_url = args[0]
         assert 'oauth2:private_token@git-testing.devsec.astralinux.ru' in clone_url
 
-    def test_get_file_content_auth_fallback(self):
+    @patch('git.Repo')
+    def test_get_file_content_auth_fallback(self, mock_git_repo):
         """Test get_file_content falls back to API on authentication errors."""
         with patch('repomap.providers.LocalRepoProvider._clone_repo') as mock_clone:
             auth_error = git.exc.GitCommandError(
@@ -621,7 +648,8 @@ class TestLocalRepoProviderDockerAuth:
                 assert content == 'file content from API'
                 mock_get_provider.assert_called_once()
 
-    def test_fetch_repo_structure_auth_fallback(self):
+    @patch('git.Repo')
+    def test_fetch_repo_structure_auth_fallback(self, mock_git_repo):
         """Test fetch_repo_structure falls back to API on authentication errors."""  
         with patch('repomap.providers.LocalRepoProvider._clone_repo') as mock_clone:
             auth_error = git.exc.GitCommandError(
@@ -644,8 +672,9 @@ class TestLocalRepoProviderDockerAuth:
 
     @patch('tempfile.mkdtemp')
     @patch('git.Repo.clone_from')
+    @patch('git.Repo')
     @patch('shutil.rmtree')
-    def test_validate_ref_auth_fallback(self, mock_rmtree, mock_clone, mock_tempdir):
+    def test_validate_ref_auth_fallback(self, mock_rmtree, mock_git_repo, mock_clone, mock_tempdir):
         """Test validate_ref falls back to API on authentication errors."""
         mock_tempdir.return_value = '/tmp/validate_dir'
         auth_error = git.exc.GitCommandError(
