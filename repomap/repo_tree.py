@@ -770,12 +770,13 @@ class RepoTreeGenerator:
         file_info: Tuple[str, Dict[str, Any], str, str, Optional[str], bool, Optional[str]]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
-        processor = RepoTreeGenerator(token=token, use_local_clone=use_local_clone)
+        # Create processor with local cloning disabled to avoid worker processes trying to clone
+        processor = RepoTreeGenerator(token=token, use_local_clone=False)
         try:
             lang = processor._detect_language(path)
             if lang:
                 if use_local_clone and local_clone_path:
-                    # Read from local filesystem
+                    # Read from local filesystem (pre-cloned by main process)
                     from pathlib import Path
                     file_path = Path(local_clone_path) / path
                     if file_path.exists() and file_path.is_file():
@@ -800,6 +801,9 @@ class RepoTreeGenerator:
     ) -> Dict[str, Any]:
         if not self.provider:
             self.provider = get_provider(repo_url, self.token, self.use_local_clone)
+
+        # Store original ref for cache key consistency  
+        original_ref = ref
 
         # Fetch repo structure first (this handles ref validation and cloning)
         try:
@@ -841,7 +845,8 @@ class RepoTreeGenerator:
         # Get local clone path if using local clone
         local_clone_path = None
         if self.use_local_clone and hasattr(self.provider, '_cloned_repos'):
-            cache_key = f"{repo_url}#{ref or 'default'}"
+            # Use original ref for cache key consistency with cloning
+            cache_key = f"{repo_url}#{original_ref or 'default'}"
             local_clone_path = str(self.provider._cloned_repos.get(cache_key, ''))
 
         if self.use_multiprocessing and files_to_process:
@@ -850,15 +855,17 @@ class RepoTreeGenerator:
                 for path, item, repo_url, ref in files_to_process
             ]
 
-            # Add resource constraints
+            # Optimized resource constraints
+            cpu_count = multiprocessing.cpu_count()
             max_workers = min(
-                multiprocessing.cpu_count(),
+                cpu_count,
                 len(files_to_process),
-                8,  # Hard cap for CPU protection
+                cpu_count,  # Use all available cores for CPU-intensive AST parsing
             )
 
             with multiprocessing.Pool(
-                processes=max_workers, maxtasksperchild=50
+                processes=max_workers, 
+                maxtasksperchild=100  # Increased batch size for better efficiency
             ) as pool:
                 results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
