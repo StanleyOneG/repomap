@@ -1,5 +1,6 @@
 """Module for repository provider abstractions and implementations."""
 
+import logging
 import os
 import tempfile
 from abc import ABC, abstractmethod
@@ -13,6 +14,8 @@ from github import Github
 from github.Repository import Repository
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class RepoProvider(ABC):
@@ -162,7 +165,7 @@ class GitLabProvider(RepoProvider):
             f = project.files.get(file_path=file_path, ref=ref)
             return f.decode().decode('utf-8')
         except Exception as e:
-            print(f"Failed to fetch GitLab content: {e}")
+            logger.warning(f"Failed to fetch GitLab content: {e}")
             return None
 
     def fetch_repo_structure(self, repo_url: str, ref: Optional[str] = None) -> Dict:
@@ -273,7 +276,7 @@ class GitLabProvider(RepoProvider):
             if commits:
                 return commits[0].id
         except Exception as e:
-            print(f"Failed to get last commit hash from GitLab: {e}")
+            logger.warning(f"Failed to get last commit hash from GitLab: {e}")
         return None
 
 
@@ -333,7 +336,7 @@ class GitHubProvider(RepoProvider):
             content = repo.get_contents(file_path, ref=ref)
             return content.decoded_content.decode('utf-8')
         except Exception as e:
-            print(f"Failed to fetch GitHub content: {e}")
+            logger.warning(f"Failed to fetch GitHub content: {e}")
             return None
 
     def fetch_repo_structure(  # noqa: C901
@@ -378,7 +381,7 @@ class GitHubProvider(RepoProvider):
                         }
                 return structure
             except Exception as e:
-                print(f"Error fetching contents for path {path}: {e}")
+                logger.warning(f"Error fetching contents for path {path}: {e}")
                 return {}
 
         return get_tree_recursive()
@@ -448,7 +451,7 @@ class GitHubProvider(RepoProvider):
                     except Exception:
                         pass
         except Exception as e:
-            print(f"Failed to get last commit hash from GitHub: {e}")
+            logger.warning(f"Failed to get last commit hash from GitHub: {e}")
         return None
 
 
@@ -479,7 +482,7 @@ class LocalRepoProvider(RepoProvider):
                 try:
                     shutil.rmtree(temp_dir)
                 except Exception as e:
-                    print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
+                    logger.warning(f"Failed to clean up temp directory {temp_dir}: {e}")
         self._temp_dirs.clear()
         self._cloned_repos.clear()
 
@@ -508,8 +511,18 @@ class LocalRepoProvider(RepoProvider):
                 parsed = urlparse(repo_url)
                 if 'github.com' in parsed.netloc:
                     clone_url = repo_url.replace('https://github.com/', f'https://{self.token}@github.com/')
-                elif 'gitlab' in parsed.netloc:
+                else:
+                    # Handle GitLab instances (both public and private)
+                    # Use OAuth2 token format which works for most GitLab instances
                     clone_url = repo_url.replace('https://', f'https://oauth2:{self.token}@')
+            
+            # Configure git environment for non-interactive Docker containers
+            git_env = os.environ.copy()
+            git_env.update({
+                'GIT_TERMINAL_PROMPT': '0',  # Never prompt for credentials
+                'GIT_ASKPASS': 'echo',       # Use echo to prevent credential prompts
+                'GIT_SSH_COMMAND': 'ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
+            })
 
             # Clone the repository - different strategy based on whether ref is specified
             if ref:
@@ -520,14 +533,16 @@ class LocalRepoProvider(RepoProvider):
                         clone_path,
                         depth=1,
                         single_branch=True,
-                        branch=ref
+                        branch=ref,
+                        env=git_env
                     )
                 except git.exc.GitCommandError:
                     # If direct clone of branch fails, clone default and checkout
                     repo = git.Repo.clone_from(
                         clone_url,
                         clone_path,
-                        depth=1
+                        depth=1,
+                        env=git_env
                     )
                     
                     # Try to checkout the ref
@@ -556,7 +571,8 @@ class LocalRepoProvider(RepoProvider):
                     clone_url,
                     clone_path,
                     depth=1,
-                    single_branch=True
+                    single_branch=True,
+                    env=git_env
                 )
 
             self._cloned_repos[cache_key] = clone_path
@@ -565,8 +581,33 @@ class LocalRepoProvider(RepoProvider):
         except ValueError as e:
             # Re-raise ValueError for invalid refs
             raise
+        except git.exc.GitCommandError as e:
+            # Check if this is an authentication error that should trigger API fallback
+            error_msg = str(e).lower()
+            if any(auth_error in error_msg for auth_error in [
+                'could not read username', 'could not read password', 
+                'authentication failed', 'access denied', 'permission denied',
+                'no such device or address', 'terminal prompts disabled'
+            ]):
+                # Clean up failed clone attempt
+                import shutil
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                if temp_dir in self._temp_dirs:
+                    self._temp_dirs.remove(temp_dir)
+                # Let this exception propagate to trigger API fallback
+                raise git.exc.GitCommandError(command=e.command, status=e.status, 
+                                            stderr=f"Authentication failed for repository {repo_url}: {e.stderr}")
+            else:
+                # Other git errors, convert to RuntimeError 
+                raise RuntimeError(f"Failed to clone repository {repo_url}: {e}")
         except Exception as e:
-            # Fallback to existing API providers for authentication issues
+            # Clean up on any other error
+            import shutil
+            if os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
+            if temp_dir in self._temp_dirs:
+                self._temp_dirs.remove(temp_dir)
             raise RuntimeError(f"Failed to clone repository {repo_url}: {e}")
 
     def get_file_content(self, file_url: str) -> Optional[str]:
@@ -612,7 +653,7 @@ class LocalRepoProvider(RepoProvider):
             return None
 
         except Exception as e:
-            print(f"Failed to get file content from local clone: {e}")
+            logger.warning(f"Failed to get file content from local clone: {e}")
             # Fallback to API
             provider = _get_api_provider(file_url, self.token)
             return provider.get_file_content(file_url)
@@ -637,7 +678,7 @@ class LocalRepoProvider(RepoProvider):
             return self._build_structure_from_path(clone_path)
 
         except Exception as e:
-            print(f"Failed to fetch repo structure from local clone: {e}")
+            logger.warning(f"Failed to fetch repo structure from local clone: {e}")
             # Fallback to API
             provider = _get_api_provider(repo_url, self.token)
             return provider.fetch_repo_structure(repo_url, ref)
@@ -703,10 +744,20 @@ class LocalRepoProvider(RepoProvider):
                     parsed = urlparse(repo_url)
                     if 'github.com' in parsed.netloc:
                         clone_url = repo_url.replace('https://github.com/', f'https://{self.token}@github.com/')
-                    elif 'gitlab' in parsed.netloc:
+                    else:
+                        # Handle GitLab instances (both public and private)
+                        # Use OAuth2 token format which works for most GitLab instances
                         clone_url = repo_url.replace('https://', f'https://oauth2:{self.token}@')
 
-                repo = git.Repo.clone_from(clone_url, temp_dir, depth=1)
+                # Configure git environment for non-interactive Docker containers
+                git_env = os.environ.copy()
+                git_env.update({
+                    'GIT_TERMINAL_PROMPT': '0',
+                    'GIT_ASKPASS': 'echo',
+                    'GIT_SSH_COMMAND': 'ssh -o BatchMode=yes -o StrictHostKeyChecking=no'
+                })
+
+                repo = git.Repo.clone_from(clone_url, temp_dir, depth=1, env=git_env)
                 
                 if not ref:
                     return repo.active_branch.name
@@ -740,10 +791,19 @@ class LocalRepoProvider(RepoProvider):
                 if os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir)
 
+        except ValueError as e:
+            # Re-raise ValueError for invalid refs
+            raise
+        except git.exc.GitCommandError as e:
+            # Fall back to API for any git command errors (authentication, repo not found, etc.)
+            logger.warning(f"Git command failed during validation, falling back to API: {e}")
+            provider = _get_api_provider(repo_url, self.token)
+            return provider.validate_ref(repo_url, ref)
         except Exception as e:
             if "No ref found" in str(e):
                 raise
             # Fallback to API for validation
+            logger.warning(f"Failed to validate ref locally, falling back to API: {e}")
             provider = _get_api_provider(repo_url, self.token)
             return provider.validate_ref(repo_url, ref)
 
@@ -764,7 +824,7 @@ class LocalRepoProvider(RepoProvider):
             if commit_hash:
                 return commit_hash
         except Exception as e:
-            print(f"Failed to get commit hash via API: {e}")
+            logger.warning(f"Failed to get commit hash via API: {e}")
 
         # Only fall back to local cloning if API fails AND local cloning is enabled
         if self.use_local_clone:
@@ -775,7 +835,7 @@ class LocalRepoProvider(RepoProvider):
                 # Get the current HEAD commit hash
                 return repo.head.commit.hexsha
             except Exception as e:
-                print(f"Failed to get last commit hash from local clone: {e}")
+                logger.warning(f"Failed to get last commit hash from local clone: {e}")
         
         return None
 
