@@ -29,67 +29,56 @@ class CallStackGenerator:
         '.c++': 'cpp',
         '.hxx': 'cpp',
         '.hh': 'cpp',
-        
         # Python
         '.py': 'python',
         '.pyx': 'python',
         '.pyi': 'python',
-        
         # JavaScript/TypeScript
         '.js': 'javascript',
         '.jsx': 'javascript',
         '.ts': 'javascript',  # Use JS parser for TypeScript
         '.tsx': 'javascript',
         '.mjs': 'javascript',
-        
         # Go
         '.go': 'go',
-        
         # Java/JVM
         '.java': 'java',
         '.scala': 'java',  # Use Java parser for Scala
-        '.kt': 'java',     # Use Java parser for Kotlin
+        '.kt': 'java',  # Use Java parser for Kotlin
         '.kts': 'java',
-        
         # PHP
         '.php': 'php',
         '.phtml': 'php',
-        
         # C#/.NET
         '.cs': 'c_sharp',
         '.fs': 'c_sharp',  # F# - use C# parser
         '.vb': 'c_sharp',  # VB.NET - use C# parser
-        
         # Ruby
-        '.rb': 'python',   # Use Python parser for Ruby
-        
+        '.rb': 'python',  # Use Python parser for Ruby
         # Rust
-        '.rs': 'c',        # Use C parser for Rust
-        
+        '.rs': 'c',  # Use C parser for Rust
         # Swift/Objective-C
-        '.swift': 'c',     # Use C parser for Swift
-        '.m': 'c',         # Objective-C
-        '.mm': 'cpp',      # Objective-C++
-        
+        '.swift': 'c',  # Use C parser for Swift
+        '.m': 'c',  # Objective-C
+        '.mm': 'cpp',  # Objective-C++
         # Shell scripts
-        '.sh': 'python',   # Use Python parser for shell scripts
+        '.sh': 'python',  # Use Python parser for shell scripts
         '.bash': 'python',
         '.zsh': 'python',
-        
         # Other languages - use closest parser
-        '.pl': 'python',   # Perl
+        '.pl': 'python',  # Perl
         '.pm': 'python',
-        '.r': 'python',    # R
+        '.r': 'python',  # R
         '.R': 'python',
-        '.jl': 'python',   # Julia
+        '.jl': 'python',  # Julia
         '.sql': 'python',  # SQL
         '.lua': 'python',  # Lua
         '.nim': 'python',  # Nim
-        '.d': 'c',         # D language
-        '.zig': 'c',       # Zig
-        '.v': 'c',         # V language
+        '.d': 'c',  # D language
+        '.zig': 'c',  # Zig
+        '.v': 'c',  # V language
         '.dart': 'javascript',  # Dart
-        '.elm': 'javascript',   # Elm
+        '.elm': 'javascript',  # Elm
     }
 
     def __init__(

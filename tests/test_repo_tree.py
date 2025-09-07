@@ -13,6 +13,7 @@ from repomap.repo_tree import RepoTreeGenerator
 def repo_tree_generator():
     """Create a RepoTreeGenerator instance for testing with Python support only."""
     from repomap.callstack import CallStackGenerator
+
     with patch('gitlab.Gitlab') as mock_gitlab:
         # Create mock instance with projects attribute
         mock_gl = Mock()
@@ -23,14 +24,14 @@ def repo_tree_generator():
 
         # Disable multiprocessing for testing to avoid pickling issues with mocks
         generator = RepoTreeGenerator(use_multiprocessing=False)
-        
+
         # Optimize by only initializing Python parser for better performance
         with patch.object(CallStackGenerator, 'SUPPORTED_LANGUAGES', {'.py': 'python'}):
             generator.call_stack_gen = CallStackGenerator(token=generator.token)
-        
+
         generator.parsers = generator.call_stack_gen.parsers
         generator.queries = generator.call_stack_gen.queries
-        
+
         return generator
 
 
@@ -38,7 +39,7 @@ def repo_tree_generator():
 def multi_lang_repo_tree_generator():
     """Create a RepoTreeGenerator instance for testing with working tree-sitter parsers."""
     from repomap.callstack import CallStackGenerator
-    
+
     with patch('gitlab.Gitlab') as mock_gitlab:
         # Create mock instance with projects attribute
         mock_gl = Mock()
@@ -49,15 +50,15 @@ def multi_lang_repo_tree_generator():
 
         # Disable multiprocessing for testing to avoid pickling issues with mocks
         generator = RepoTreeGenerator(use_multiprocessing=False)
-        
+
         # Use real CallStackGenerator but limit to only required languages for performance
         # We'll initialize all languages since tests need them, but this is still much faster
         # than full repo processing
         generator.call_stack_gen = CallStackGenerator(token=generator.token)
-        
+
         generator.parsers = generator.call_stack_gen.parsers
         generator.queries = generator.call_stack_gen.queries
-        
+
         return generator
 
 
@@ -65,7 +66,7 @@ def multi_lang_repo_tree_generator():
 def api_only_repo_tree_generator():
     """Create a RepoTreeGenerator instance for testing with API-only access (no local cloning)."""
     from repomap.callstack import CallStackGenerator
-    
+
     with patch('gitlab.Gitlab') as mock_gitlab:
         # Create mock instance with projects attribute
         mock_gl = Mock()
@@ -76,13 +77,13 @@ def api_only_repo_tree_generator():
 
         # Disable multiprocessing and local cloning for testing
         generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
-        
+
         # Use real CallStackGenerator for parsing
         generator.call_stack_gen = CallStackGenerator(token=generator.token)
-        
+
         generator.parsers = generator.call_stack_gen.parsers
         generator.queries = generator.call_stack_gen.queries
-        
+
         return generator
 
 
@@ -868,7 +869,9 @@ def test_save_repo_tree(repo_tree_generator, tmp_path):
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_c(mock_gitlab, multi_lang_repo_tree_generator, mock_c_content):
+def test_generate_repo_tree_c(
+    mock_gitlab, multi_lang_repo_tree_generator, mock_c_content
+):
     """Test repository AST tree generation for C code."""
     # Setup mock project
     mock_project = Mock()
@@ -918,7 +921,7 @@ def test_generate_repo_tree_c(mock_gitlab, multi_lang_repo_tree_generator, mock_
     assert "calculate_area" in functions
     assert "process_shape" in functions
     assert "transform_shape" in functions
-    
+
     # Verify pointer functions are captured
     assert "create_shape" in functions, "Pointer function create_shape not found"
     assert "allocate_memory" in functions, "Pointer function allocate_memory not found"
@@ -1026,8 +1029,11 @@ operation_func get_operation(char op) {
 }
 """
 
+
 @patch('gitlab.Gitlab')
-def test_c_pointer_functions(mock_gitlab, multi_lang_repo_tree_generator, mock_c_pointer_functions):
+def test_c_pointer_functions(
+    mock_gitlab, multi_lang_repo_tree_generator, mock_c_pointer_functions
+):
     """Test repository AST tree generation for C code with pointer functions."""
     # Setup mock project
     mock_project = Mock()
@@ -1050,7 +1056,9 @@ def test_c_pointer_functions(mock_gitlab, multi_lang_repo_tree_generator, mock_c
 
     # Mock file content fetching
     with patch.object(
-        multi_lang_repo_tree_generator, '_get_file_content', return_value=mock_c_pointer_functions
+        multi_lang_repo_tree_generator,
+        '_get_file_content',
+        return_value=mock_c_pointer_functions,
     ):
         repo_tree = multi_lang_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo"
@@ -1065,9 +1073,14 @@ def test_c_pointer_functions(mock_gitlab, multi_lang_repo_tree_generator, mock_c
     functions = file_data["ast"]["functions"]
     assert "create_node" in functions, "Function returning pointer not found"
     assert "delete_node" in functions, "Function with pointer parameter not found"
-    assert "allocate_matrix" in functions, "Function with complex pointer declaration not found"
-    assert "process_with_callback" in functions, "Function with function pointer parameter not found"
+    assert (
+        "allocate_matrix" in functions
+    ), "Function with complex pointer declaration not found"
+    assert (
+        "process_with_callback" in functions
+    ), "Function with function pointer parameter not found"
     assert "get_operation" in functions, "Function returning function pointer not found"
+
 
 @patch('gitlab.Gitlab')
 def test_generate_repo_tree_with_unsupported_files(mock_gitlab, repo_tree_generator):
@@ -1352,7 +1365,9 @@ namespace mynamespace {
 
 
 @patch('gitlab.Gitlab')
-def test_generate_repo_tree_cpp(mock_gitlab, multi_lang_repo_tree_generator, mock_cpp_content):
+def test_generate_repo_tree_cpp(
+    mock_gitlab, multi_lang_repo_tree_generator, mock_cpp_content
+):
     """Test repository AST tree generation for C++ code."""
     # Setup mock project
     mock_project = Mock()
@@ -1375,7 +1390,9 @@ def test_generate_repo_tree_cpp(mock_gitlab, multi_lang_repo_tree_generator, moc
 
     # Mock file content fetching
     with patch.object(
-        multi_lang_repo_tree_generator, '_get_file_content', return_value=mock_cpp_content
+        multi_lang_repo_tree_generator,
+        '_get_file_content',
+        return_value=mock_cpp_content,
     ):
         repo_tree = multi_lang_repo_tree_generator.generate_repo_tree(
             "https://example.com/group/repo"
@@ -1507,18 +1524,16 @@ class TestRepoTreeCommitHash:
 
     @patch('repomap.repo_tree.get_provider')
     @patch.object(RepoTreeGenerator, '_get_file_content')
-    def test_generate_repo_tree_includes_commit_hash(self, mock_get_content, mock_get_provider):
+    def test_generate_repo_tree_includes_commit_hash(
+        self, mock_get_content, mock_get_provider
+    ):
         """Test that generate_repo_tree includes commit hash in metadata."""
         # Mock provider
         mock_provider = Mock()
         mock_provider.validate_ref.return_value = 'main'
         mock_provider.get_last_commit_hash.return_value = 'abc123def456'
         mock_provider.fetch_repo_structure.return_value = {
-            'test.py': {
-                'type': 'blob',
-                'mode': '100644',
-                'id': 'file123'
-            }
+            'test.py': {'type': 'blob', 'mode': '100644', 'id': 'file123'}
         }
         mock_get_provider.return_value = mock_provider
         mock_get_content.return_value = 'print("hello")'
@@ -1537,9 +1552,7 @@ class TestRepoTreeCommitHash:
         """Test is_repo_tree_up_to_date returns False when no file exists."""
         generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
-            'https://github.com/owner/repo', 
-            'main', 
-            'nonexistent.json'
+            'https://github.com/owner/repo', 'main', 'nonexistent.json'
         )
         assert result is False
 
@@ -1551,9 +1564,9 @@ class TestRepoTreeCommitHash:
             'metadata': {
                 'url': 'https://github.com/owner/repo',
                 'ref': 'main',
-                'last_commit_hash': 'same123hash'
+                'last_commit_hash': 'same123hash',
             },
-            'files': {}
+            'files': {},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1567,9 +1580,7 @@ class TestRepoTreeCommitHash:
 
         generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
-            'https://github.com/owner/repo',
-            'main',
-            str(repo_tree_file)
+            'https://github.com/owner/repo', 'main', str(repo_tree_file)
         )
         assert result is True
 
@@ -1581,9 +1592,9 @@ class TestRepoTreeCommitHash:
             'metadata': {
                 'url': 'https://github.com/owner/repo',
                 'ref': 'main',
-                'last_commit_hash': 'old123hash'
+                'last_commit_hash': 'old123hash',
             },
-            'files': {}
+            'files': {},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1597,9 +1608,7 @@ class TestRepoTreeCommitHash:
 
         generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
-            'https://github.com/owner/repo',
-            'main',
-            str(repo_tree_file)
+            'https://github.com/owner/repo', 'main', str(repo_tree_file)
         )
         assert result is False
 
@@ -1611,9 +1620,9 @@ class TestRepoTreeCommitHash:
             'metadata': {
                 'url': 'https://github.com/other/repo',
                 'ref': 'main',
-                'last_commit_hash': 'same123hash'
+                'last_commit_hash': 'same123hash',
             },
-            'files': {}
+            'files': {},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1621,9 +1630,7 @@ class TestRepoTreeCommitHash:
 
         generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
-            'https://github.com/owner/repo',
-            'main',
-            str(repo_tree_file)
+            'https://github.com/owner/repo', 'main', str(repo_tree_file)
         )
         assert result is False
 
@@ -1632,11 +1639,8 @@ class TestRepoTreeCommitHash:
         """Test is_repo_tree_up_to_date returns False when existing tree has no commit hash."""
         # Create existing repo tree file without commit hash
         existing_tree = {
-            'metadata': {
-                'url': 'https://github.com/owner/repo',
-                'ref': 'main'
-            },
-            'files': {}
+            'metadata': {'url': 'https://github.com/owner/repo', 'ref': 'main'},
+            'files': {},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1644,24 +1648,24 @@ class TestRepoTreeCommitHash:
 
         generator = RepoTreeGenerator(use_local_clone=False)
         result = generator.is_repo_tree_up_to_date(
-            'https://github.com/owner/repo',
-            'main',
-            str(repo_tree_file)
+            'https://github.com/owner/repo', 'main', str(repo_tree_file)
         )
         assert result is False
 
     @patch('builtins.print')  # Mock print to suppress output
     @patch('repomap.repo_tree.get_provider')
-    def test_generate_repo_tree_if_needed_up_to_date(self, mock_get_provider, mock_print, tmp_path):
+    def test_generate_repo_tree_if_needed_up_to_date(
+        self, mock_get_provider, mock_print, tmp_path
+    ):
         """Test generate_repo_tree_if_needed loads existing tree when up to date."""
         # Create existing repo tree file
         existing_tree = {
             'metadata': {
                 'url': 'https://github.com/owner/repo',
                 'ref': 'main',
-                'last_commit_hash': 'same123hash'
+                'last_commit_hash': 'same123hash',
             },
-            'files': {'test.py': {'language': 'python', 'ast': {}}}
+            'files': {'test.py': {'language': 'python', 'ast': {}}},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1674,13 +1678,11 @@ class TestRepoTreeCommitHash:
         mock_get_provider.return_value = mock_provider
 
         generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
-        
+
         # Mock generate_repo_tree so we can verify it wasn't called
         with patch.object(generator, 'generate_repo_tree') as mock_generate:
             result = generator.generate_repo_tree_if_needed(
-                'https://github.com/owner/repo',
-                'main',
-                str(repo_tree_file)
+                'https://github.com/owner/repo', 'main', str(repo_tree_file)
             )
 
         # Should load existing tree, not generate new one
@@ -1690,16 +1692,18 @@ class TestRepoTreeCommitHash:
     @patch('builtins.print')  # Mock print to suppress output
     @patch('repomap.repo_tree.get_provider')
     @patch.object(RepoTreeGenerator, '_get_file_content')
-    def test_generate_repo_tree_if_needed_outdated(self, mock_get_content, mock_get_provider, mock_print, tmp_path):
+    def test_generate_repo_tree_if_needed_outdated(
+        self, mock_get_content, mock_get_provider, mock_print, tmp_path
+    ):
         """Test generate_repo_tree_if_needed generates new tree when outdated."""
         # Create existing repo tree file
         existing_tree = {
             'metadata': {
                 'url': 'https://github.com/owner/repo',
                 'ref': 'main',
-                'last_commit_hash': 'old123hash'
+                'last_commit_hash': 'old123hash',
             },
-            'files': {}
+            'files': {},
         }
         repo_tree_file = tmp_path / 'repo_tree.json'
         with open(repo_tree_file, 'w') as f:
@@ -1715,9 +1719,7 @@ class TestRepoTreeCommitHash:
 
         generator = RepoTreeGenerator(use_multiprocessing=False, use_local_clone=False)
         result = generator.generate_repo_tree_if_needed(
-            'https://github.com/owner/repo',
-            'main',
-            str(repo_tree_file)
+            'https://github.com/owner/repo', 'main', str(repo_tree_file)
         )
 
         # Should generate new tree with new commit hash
@@ -1728,51 +1730,52 @@ class TestRepoTreeCommitHash:
 # Go Language Tests
 # ========================
 
+
 def test_parse_go_file_ast(multi_lang_repo_tree_generator, mock_go_content):
     """Test parsing Go file AST to extract functions, types, calls, and imports."""
     ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
-    
+
     # Test that we found the expected functions
     assert len(ast_data["functions"]) > 0
     assert "main" in ast_data["functions"]
-    assert "processUser" in ast_data["functions"] 
+    assert "processUser" in ast_data["functions"]
     assert "validateUser" in ast_data["functions"]
     assert "logUser" in ast_data["functions"]
     assert "validateAge" in ast_data["functions"]
     assert "NewUserService" in ast_data["functions"]
-    
+
     # Test method functions (with receiver types)
     assert "User.GetName" in ast_data["functions"]
     assert "User.SetAge" in ast_data["functions"]
     assert "User.GetFormattedName" in ast_data["functions"]
     assert "UserService.AddUser" in ast_data["functions"]
-    
+
     # Test that types (Go structs) are treated as classes
     assert len(ast_data["classes"]) == 2
     assert "User" in ast_data["classes"]
     assert "UserService" in ast_data["classes"]
-    
+
     # Test that User struct has the expected methods
     user_class = ast_data["classes"]["User"]
     assert "GetName" in user_class["methods"]
     assert "SetAge" in user_class["methods"]
     assert "GetFormattedName" in user_class["methods"]
-    
+
     # Test that UserService struct has the expected methods
     service_class = ast_data["classes"]["UserService"]
     assert "AddUser" in service_class["methods"]
-    
+
     # Test imports are extracted correctly
     assert len(ast_data["imports"]) == 3
     assert "fmt" in ast_data["imports"]
     assert "log" in ast_data["imports"]
     assert "strings" in ast_data["imports"]
-    
+
     # Test that calls are detected
     assert len(ast_data["calls"]) > 0
     call_names = [call["name"] for call in ast_data["calls"]]
     assert "Println" in call_names  # fmt.Println()
-    assert "SetAge" in call_names   # user.SetAge() 
+    assert "SetAge" in call_names  # user.SetAge()
     assert "processUser" in call_names  # processUser()
     assert "validateUser" in call_names  # validateUser()
     assert "GetName" in call_names  # user.GetName()
@@ -1781,33 +1784,33 @@ def test_parse_go_file_ast(multi_lang_repo_tree_generator, mock_go_content):
 def test_go_function_details(multi_lang_repo_tree_generator, mock_go_content):
     """Test detailed function information for Go functions."""
     ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
-    
+
     # Test main function details
     main_func = ast_data["functions"]["main"]
     assert main_func["name"] == "main"
     assert main_func["class"] is None
     assert main_func["start_line"] > 0
     assert main_func["end_line"] > main_func["start_line"]
-    
+
     # Test method function details
     get_name_func = ast_data["functions"]["User.GetName"]
     assert get_name_func["name"] == "GetName"
     assert get_name_func["class"] == "User"
     assert get_name_func["start_line"] > 0
-    
+
     # Test that method calls are captured
     assert len(get_name_func["calls"]) >= 0  # May or may not have calls
-    
+
     # Test regular function details
     validate_func = ast_data["functions"]["validateUser"]
     assert validate_func["name"] == "validateUser"
     assert validate_func["class"] is None
-    
+
 
 def test_go_type_extraction(multi_lang_repo_tree_generator, mock_go_content):
     """Test Go type (struct) extraction and classification."""
     ast_data = multi_lang_repo_tree_generator._parse_file_ast(mock_go_content, "go")
-    
+
     # Test User struct
     user_type = ast_data["classes"]["User"]
     assert user_type["name"] == "User"
@@ -1815,8 +1818,8 @@ def test_go_type_extraction(multi_lang_repo_tree_generator, mock_go_content):
     assert user_type["end_line"] > user_type["start_line"]
     assert len(user_type["methods"]) == 3  # GetName, SetAge, GetFormattedName
     assert user_type["base_classes"] == []  # Go structs don't have inheritance
-    
-    # Test UserService struct  
+
+    # Test UserService struct
     service_type = ast_data["classes"]["UserService"]
     assert service_type["name"] == "UserService"
     assert len(service_type["methods"]) == 1  # AddUser
@@ -1826,7 +1829,7 @@ def test_go_empty_file(multi_lang_repo_tree_generator):
     """Test parsing empty Go file."""
     empty_go_content = "package main\n"
     ast_data = multi_lang_repo_tree_generator._parse_file_ast(empty_go_content, "go")
-    
+
     assert ast_data["functions"] == {}
     assert ast_data["classes"] == {}
     assert ast_data["calls"] == []
@@ -1834,7 +1837,7 @@ def test_go_empty_file(multi_lang_repo_tree_generator):
 
 
 def test_go_simple_import(multi_lang_repo_tree_generator):
-    """Test Go import parsing with different import styles.""" 
+    """Test Go import parsing with different import styles."""
     simple_import_content = '''
 package main
 
@@ -1845,7 +1848,9 @@ func main() {
     fmt.Println("Hello")
 }
 '''
-    ast_data = multi_lang_repo_tree_generator._parse_file_ast(simple_import_content, "go")
+    ast_data = multi_lang_repo_tree_generator._parse_file_ast(
+        simple_import_content, "go"
+    )
     assert "fmt" in ast_data["imports"]
     assert "log" in ast_data["imports"]
     assert len(ast_data["imports"]) == 2
