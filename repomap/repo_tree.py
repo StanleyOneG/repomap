@@ -862,6 +862,7 @@ class RepoTreeGenerator:
             start_time = time.time()
             lang = processor._detect_language(path)
             if not lang:
+                logger.debug(f"SKIP: No language detected for {path}")
                 return path, None
             
             content = None
@@ -870,7 +871,7 @@ class RepoTreeGenerator:
                 from pathlib import Path
                 file_path = Path(local_clone_path) / path
                 if not file_path.exists() or not file_path.is_file():
-                    logger.debug(f"File not found: {path}")
+                    logger.debug(f"SKIP: File not found: {path}")
                     return path, None
                 
                 # Read file regardless of size - we want complete processing
@@ -880,23 +881,24 @@ class RepoTreeGenerator:
                         content_bytes = f.read()  # Read entire file
                     content = content_bytes.decode('utf-8', errors='ignore')
                 except (OSError, UnicodeDecodeError) as e:
-                    logger.debug(f"Failed to read {path}: {e}")
+                    logger.debug(f"SKIP: Failed to read {path}: {e}")
                     return path, None
             else:
                 # Use API method - this should be rare with local clone enabled
                 content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
                 if not content:
-                    logger.debug(f"No content from API for {path}")
+                    logger.debug(f"SKIP: No content from API for {path}")
                     return path, None
             
             # Only skip truly empty files - process everything else
             if not content:
+                logger.debug(f"SKIP: Empty content for {path}")
                 return path, None
             
             # More permissive binary file check - only skip obvious binary files
             null_count = content[:5000].count('\0')  # Check first 5KB
             if null_count > 10:  # Allow some null bytes but skip obviously binary files
-                logger.debug(f"Skipping binary file {path} (null bytes: {null_count})")
+                logger.debug(f"SKIP: Binary file {path} (null bytes: {null_count})")
                 return path, None
             
             try:
@@ -909,10 +911,10 @@ class RepoTreeGenerator:
                 logger.warning(f"AST parsing timeout for {path} ({lang}) after 60s - file too complex")
                 return path, None
             except Exception as e:
-                logger.debug(f"AST parsing error for {path} ({lang}): {e}")  # Reduced to debug level
+                logger.debug(f"SKIP: AST parsing error for {path} ({lang}): {e}")
                 return path, None
         except Exception as e:
-            logger.debug(f"Worker error processing {path}: {e}")  # Reduced to debug level
+            logger.debug(f"SKIP: Worker error processing {path}: {e}")
             
         return path, None
 
