@@ -720,8 +720,17 @@ class RepoTreeGenerator:
 
         return None
 
-    @with_timeout(30)  # 30 second timeout for AST parsing
+    @with_timeout(60)  # Increased to 60 second timeout for very large files - no file should be skipped
     def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:  # noqa: C901
+        # Log extremely large files but don't skip them - process everything
+        if len(content) > 10 * 1024 * 1024:  # Log files > 10MB but still process
+            logger.info(f"Processing very large file: {len(content)} characters")
+            
+        # Log files with many lines but don't skip them - process everything  
+        line_count = content.count('\n')
+        if line_count > 50000:  # Log files with > 50k lines but still process
+            logger.info(f"Processing file with many lines: {line_count} lines")
+            
         parser = self.parsers[lang]
         tree = parser.parse(bytes(content, 'utf8'))
 
@@ -845,50 +854,65 @@ class RepoTreeGenerator:
         
         # Use global worker instance to avoid expensive re-initialization
         # This will be created once per worker process and reused
-        if not hasattr(_process_file_worker, '_processor'):
-            _process_file_worker._processor = RepoTreeGenerator(token=token, use_local_clone=False)
-        processor = _process_file_worker._processor
+        if not hasattr(RepoTreeGenerator._process_file_worker, '_processor'):
+            RepoTreeGenerator._process_file_worker._processor = RepoTreeGenerator(token=token, use_local_clone=False)
+        processor = RepoTreeGenerator._process_file_worker._processor
         
         try:
             start_time = time.time()
             lang = processor._detect_language(path)
-            if lang:
-                if use_local_clone and local_clone_path:
-                    # Read from local filesystem (pre-cloned by main process)
-                    from pathlib import Path
-                    file_path = Path(local_clone_path) / path
-                    if file_path.exists() and file_path.is_file():
-                        # Skip extremely large files that might cause hanging
-                        file_size = file_path.stat().st_size
-                        if file_size > 2 * 1024 * 1024:  # Skip files > 2MB
-                            logger.warning(f"Skipping large file {path} ({file_size} bytes)")
-                            return path, None
-                        content = file_path.read_text(encoding='utf-8', errors='ignore')
-                    else:
-                        return path, None
-                else:
-                    # Use API method
-                    content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
-                    # Skip large content from API as well
-                    if content and len(content) > 2 * 1024 * 1024:  # Skip content > 2MB
-                        logger.warning(f"Skipping large file content {path} ({len(content)} chars)")
-                        return path, None
+            if not lang:
+                return path, None
+            
+            content = None
+            if use_local_clone and local_clone_path:
+                # Read from local filesystem (pre-cloned by main process)
+                from pathlib import Path
+                file_path = Path(local_clone_path) / path
+                if not file_path.exists() or not file_path.is_file():
+                    logger.debug(f"File not found: {path}")
+                    return path, None
                 
-                if content:
-                    try:
-                        ast_data = processor._parse_file_ast(content, lang)
-                        elapsed = time.time() - start_time
-                        if elapsed > 10:  # Log slow files
-                            logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
-                        return path, {"language": lang, "ast": ast_data}
-                    except TimeoutError:
-                        logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
-                        return path, None
-                    except Exception as e:
-                        logger.error(f"AST parsing error for {path} ({lang}): {e}")
-                        return path, None
+                # Read file regardless of size - we want complete processing
+                try:
+                    # Read entire file content without size limits
+                    with open(file_path, 'rb') as f:
+                        content_bytes = f.read()  # Read entire file
+                    content = content_bytes.decode('utf-8', errors='ignore')
+                except (OSError, UnicodeDecodeError) as e:
+                    logger.debug(f"Failed to read {path}: {e}")
+                    return path, None
+            else:
+                # Use API method - this should be rare with local clone enabled
+                content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+                if not content:
+                    logger.debug(f"No content from API for {path}")
+                    return path, None
+            
+            # Only skip truly empty files - process everything else
+            if not content:
+                return path, None
+            
+            # More permissive binary file check - only skip obvious binary files
+            null_count = content[:5000].count('\0')  # Check first 5KB
+            if null_count > 10:  # Allow some null bytes but skip obviously binary files
+                logger.debug(f"Skipping binary file {path} (null bytes: {null_count})")
+                return path, None
+            
+            try:
+                ast_data = processor._parse_file_ast(content, lang)
+                elapsed = time.time() - start_time
+                if elapsed > 5:  # Reduced threshold from 10s to 5s
+                    logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                return path, {"language": lang, "ast": ast_data}
+            except TimeoutError:
+                logger.warning(f"AST parsing timeout for {path} ({lang}) after 60s - file too complex")
+                return path, None
+            except Exception as e:
+                logger.debug(f"AST parsing error for {path} ({lang}): {e}")  # Reduced to debug level
+                return path, None
         except Exception as e:
-            logger.error(f"Worker error processing {path}: {e}")
+            logger.debug(f"Worker error processing {path}: {e}")  # Reduced to debug level
             
         return path, None
 
@@ -948,34 +972,74 @@ class RepoTreeGenerator:
             local_clone_path = str(self.provider._cloned_repos.get(cache_key, ''))
 
         if self.use_multiprocessing and files_to_process:
+            # Pre-filter files by extension - more inclusive for complete repo-tree
+            supported_extensions = {
+                '.c', '.h', '.cpp', '.hpp', '.cc', '.cxx', '.c++', '.hxx', '.hh',
+                '.py', '.pyx', '.pyi', '.js', '.jsx', '.ts', '.tsx', '.mjs',
+                '.go', '.java', '.scala', '.kt', '.kts', '.php', '.phtml',
+                '.cs', '.fs', '.vb', '.rb', '.rs', '.swift', '.m', '.mm',
+                '.pl', '.pm', '.r', '.R', '.jl', '.sh', '.bash', '.zsh',
+                '.sql', '.lua', '.nim', '.d', '.zig', '.v', '.dart', '.elm'
+            }
+            
+            # More inclusive filtering - process all supported files regardless of size initially
+            filtered_files = []
+            skipped_by_extension = 0
+            skipped_by_size = 0
+            
+            for path, item, repo_url, ref in files_to_process:
+                # Quick extension check - only filter by supported languages
+                ext = '.' + path.split('.')[-1].lower() if '.' in path else ''
+                if ext in supported_extensions:
+                    # Accept ALL files with supported extensions - no size limits in pre-filtering
+                    filtered_files.append((path, item, repo_url, ref))
+                else:
+                    skipped_by_extension += 1
+                        
+            if not filtered_files:
+                logger.info("No suitable files found for processing")
+                return repo_tree
+                
+            logger.info(f"Pre-filtered {len(files_to_process)} files: {len(filtered_files)} processable, {skipped_by_extension} unsupported extensions (processing ALL supported files regardless of size)")
+            
             files_to_process_mp = [
                 (path, item, repo_url, ref, self.token, self.use_local_clone, local_clone_path)
-                for path, item, repo_url, ref in files_to_process
+                for path, item, repo_url, ref in filtered_files
             ]
 
-            # Optimized resource constraints for C projects with many files
+            # Aggressive worker count for maximum CPU utilization
             cpu_count = multiprocessing.cpu_count()
-            # For large repos, limit workers to prevent excessive memory usage and initialization overhead
-            max_workers = min(
-                max(2, cpu_count // 2),  # Use half the cores to reduce memory pressure
-                len(files_to_process),
-                16  # Cap at 16 workers even on high-core machines
-            )
-            
-            logger.info(f"Using {max_workers} worker processes for {len(files_to_process)} files")
+            # Use all available cores for complete processing
+            if len(filtered_files) > 1000:
+                max_workers = min(cpu_count, 20)  # Use all cores, cap at 20 for stability
+            else:
+                max_workers = min(cpu_count, len(filtered_files))  # Use all cores up to file count
+                
+            logger.info(f"Using {max_workers} worker processes for {len(filtered_files)} files (CPU cores: {cpu_count})")
 
-            with multiprocessing.Pool(
+            # Use spawn method for cleaner worker processes
+            with multiprocessing.get_context('spawn').Pool(
                 processes=max_workers, 
-                maxtasksperchild=1000  # Higher value to avoid frequent worker recycling
+                maxtasksperchild=1000  # Increased back for better efficiency
             ) as pool:
-                # Use chunksize to batch work and reduce overhead
-                chunksize = max(1, len(files_to_process_mp) // (max_workers * 4))
+                # Optimized chunking for better load balancing
+                chunksize = max(1, len(files_to_process_mp) // (max_workers * 3))
+                if len(files_to_process_mp) > 1000:
+                    chunksize = max(chunksize, 5)  # Minimum chunk size for large sets
                 logger.info(f"Processing files in chunks of {chunksize}")
                 
                 results = pool.map(self._process_file_worker, files_to_process_mp, chunksize=chunksize)
+                
+                processed_count = 0
+                skipped_count = 0
                 for path, data in results:
                     if data:
                         repo_tree["files"][path] = data
+                        processed_count += 1
+                    else:
+                        skipped_count += 1
+                        
+                logger.info(f"Successfully processed {processed_count} files, skipped {skipped_count} files out of {len(filtered_files)} total")
         else:
             for path, item, repo_url, ref in files_to_process:
                 try:
@@ -987,12 +1051,13 @@ class RepoTreeGenerator:
                             from pathlib import Path
                             file_path = Path(local_clone_path) / path
                             if file_path.exists() and file_path.is_file():
-                                # Skip extremely large files that might cause hanging
-                                file_size = file_path.stat().st_size
-                                if file_size > 2 * 1024 * 1024:  # Skip files > 2MB
-                                    logger.warning(f"Skipping large file {path} ({file_size} bytes)")
+                                # Process all files - no size limits for completeness
+                                try:
+                                    with open(file_path, 'rb') as f:
+                                        content_bytes = f.read()  # Read entire file
+                                    content = content_bytes.decode('utf-8', errors='ignore')
+                                except (OSError, UnicodeDecodeError):
                                     continue
-                                content = file_path.read_text(encoding='utf-8', errors='ignore')
                             else:
                                 continue
                         else:
@@ -1000,23 +1065,26 @@ class RepoTreeGenerator:
                             content = self._get_file_content(
                                 f"{repo_url}/-/blob/{ref}/{path}"
                             )
-                            # Skip large content from API as well
-                            if content and len(content) > 2 * 1024 * 1024:  # Skip content > 2MB
-                                logger.warning(f"Skipping large file content {path} ({len(content)} chars)")
+                            # Process all content from API - no size limits
+                            if not content:
                                 continue
                         
                         if content:
+                            # More permissive binary file check - only skip obvious binary files
+                            null_count = content[:5000].count('\0')  # Check first 5KB
+                            if null_count > 10:  # Allow some null bytes but skip obviously binary files
+                                continue
                             try:
                                 ast_data = self._parse_file_ast(content, lang)
                                 elapsed = time.time() - start_time
-                                if elapsed > 10:  # Log slow files
+                                if elapsed > 5:  # Reduced threshold
                                     logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
                                 repo_tree["files"][path] = {
                                     "language": lang,
                                     "ast": ast_data,
                                 }
                             except TimeoutError:
-                                logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
+                                logger.warning(f"AST parsing timeout for {path} ({lang}) after 60s - file too complex")
                                 continue
                             except Exception as e:
                                 logger.error(f"AST parsing error for {path} ({lang}): {e}")

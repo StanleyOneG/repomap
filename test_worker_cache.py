@@ -9,7 +9,7 @@ def test_worker_function(dummy_data):
     """Test that worker function properly caches processor instance."""
     file_info = (
         'test.c',  # path
-        {'type': 'blob'},  # item
+        {'type': 'blob', 'size': 100},  # item with size
         'https://example.com/repo',  # repo_url
         'main',  # ref
         None,  # token
@@ -24,10 +24,10 @@ def test_worker_function(dummy_data):
     return elapsed, hasattr(RepoTreeGenerator._process_file_worker, '_processor')
 
 if __name__ == '__main__':
-    print("Testing worker processor caching...")
+    print("Testing worker processor caching with spawn context...")
     
-    # Test with multiprocessing
-    with multiprocessing.Pool(processes=2) as pool:
+    # Test with spawn context (like the optimized implementation)
+    with multiprocessing.get_context('spawn').Pool(processes=2) as pool:
         results = pool.map(test_worker_function, [1, 2, 3, 4])
     
     print("Worker execution times and cache status:")
