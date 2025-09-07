@@ -173,6 +173,7 @@ class CallStackGenerator:
                 'function_definition',
                 'method_definition',
                 'function_declaration',
+                'method_declaration',
             ):
                 start_line = cursor.node.start_point[0]
                 end_line = cursor.node.end_point[0]
@@ -181,8 +182,21 @@ class CallStackGenerator:
                     # Handle different function declaration patterns
                     func_name = None
 
+                    # Handle Go function and method declarations
+                    if cursor.node.type == 'function_declaration':
+                        # For Go functions: func main() { ... }
+                        for child in cursor.node.children:
+                            if child.type == 'identifier':
+                                func_name = child.text.decode('utf8')
+                                break
+                    elif cursor.node.type == 'method_declaration':
+                        # For Go methods: func (u *User) GetName() { ... }
+                        for child in cursor.node.children:
+                            if child.type == 'field_identifier':
+                                func_name = child.text.decode('utf8')
+                                break
                     # For C++ methods and functions
-                    if cursor.node.type == 'function_definition':
+                    elif cursor.node.type == 'function_definition':
                         declarator = next(
                             (
                                 c

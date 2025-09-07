@@ -97,6 +97,48 @@ static int match(snd_mixer_class_t *class, const char *lib, const char *searchl)
 }
 '''
 
+# Sample Go file content for testing
+SAMPLE_GO_CONTENT = '''package main
+
+import (
+    "fmt"
+    "log"
+)
+
+type User struct {
+    Name  string
+    Email string
+}
+
+func main() {
+    user := &User{Name: "John", Email: "john@example.com"}
+    name := user.GetName()
+    fmt.Printf("User name: %s\\n", name)
+    processUser(user)
+}
+
+func (u *User) GetName() string {
+    if u == nil {
+        return ""
+    }
+    return u.Name
+}
+
+func (u *User) SetEmail(email string) {
+    if u != nil {
+        u.Email = email
+    }
+}
+
+func processUser(user *User) {
+    if user == nil {
+        log.Println("User is nil")
+        return
+    }
+    fmt.Printf("Processing user: %s\\n", user.GetName())
+}
+'''
+
 
 @pytest.fixture
 def structure_file(tmp_path):
@@ -497,3 +539,108 @@ def test_get_function_content_by_name_invalid_tree(tmp_path):
         ValueError, match="Invalid repository tree file: missing metadata.url"
     ):
         generator.get_function_content_by_name(str(file_path), "any_function")
+
+
+@patch('gitlab.Gitlab')
+def test_generate_call_stack_go_function(mock_gitlab, generator):
+    """Test generating call stack from Go function code."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_GO_CONTENT
+
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    url = "https://example.com/group/project/-/blob/main/src/main.go"
+    # Test line inside main function
+    call_stack = generator.generate_call_stack(url, 15)
+
+    assert len(call_stack) == 1
+    assert call_stack[0]['function'] == 'main'
+    assert call_stack[0]['file'] == url
+    assert call_stack[0]['line'] == 15
+    # Check for function calls inside main
+    assert 'Printf' in call_stack[0]['calls']
+    assert 'processUser' in call_stack[0]['calls']
+    assert 'GetName' in call_stack[0]['calls']
+
+
+@patch('gitlab.Gitlab')
+def test_generate_call_stack_go_method(mock_gitlab, generator):
+    """Test generating call stack from Go method code."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_GO_CONTENT
+
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    url = "https://example.com/group/project/-/blob/main/src/main.go"
+    # Test line inside GetName method
+    call_stack = generator.generate_call_stack(url, 23)
+
+    assert len(call_stack) == 1
+    assert call_stack[0]['function'] == 'GetName'
+    assert call_stack[0]['file'] == url
+    assert call_stack[0]['line'] == 23
+
+
+@patch('gitlab.Gitlab')
+def test_get_function_content_go_function(mock_gitlab, generator):
+    """Test getting Go function content."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_GO_CONTENT
+
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    url = "https://example.com/group/project/-/blob/main/src/main.go"
+
+    # Test getting main function content
+    content = generator.get_function_content_by_line(url, 15)  # Line inside main()
+    assert "func main() {" in content
+    assert "user := &User" in content
+    assert "processUser(user)" in content
+
+    # Test getting processUser function content
+    content = generator.get_function_content_by_line(url, 35)  # Line inside processUser()
+    assert "func processUser(user *User) {" in content
+    assert 'log.Println("User is nil")' in content
+    assert "user.GetName()" in content
+
+
+@patch('gitlab.Gitlab')
+def test_get_function_content_go_method(mock_gitlab, generator):
+    """Test getting Go method content."""
+    # Setup mock GitLab instance and project
+    mock_gitlab_instance = Mock()
+    mock_project = Mock()
+    mock_file = MagicMock()
+    mock_file.decode.return_value.decode.return_value = SAMPLE_GO_CONTENT
+
+    mock_project.files.get.return_value = mock_file
+    mock_gitlab_instance.projects.get.return_value = mock_project
+    mock_gitlab.return_value = mock_gitlab_instance
+
+    url = "https://example.com/group/project/-/blob/main/src/main.go"
+
+    # Test getting GetName method content
+    content = generator.get_function_content_by_line(url, 23)  # Line inside GetName method
+    assert "func (u *User) GetName() string {" in content
+    assert "if u == nil {" in content
+    assert "return u.Name" in content
+
+    # Test getting SetEmail method content
+    content = generator.get_function_content_by_line(url, 29)  # Line inside SetEmail method
+    assert "func (u *User) SetEmail(email string) {" in content
+    assert "u.Email = email" in content
