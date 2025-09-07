@@ -143,7 +143,10 @@ def test_main_repo_tree_without_local_clone(mock_generator):
     mock_instance.generate_repo_tree.return_value = {"files": {}}
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--no-local-clone']):
+    with patch(
+        'sys.argv',
+        ['repomap', 'https://example.com/repo', '--repo-tree', '--no-local-clone'],
+    ):
         result = main()
 
     assert result == 0
@@ -160,7 +163,10 @@ def test_main_repo_tree_with_branch_ref(mock_generator):
     mock_instance.generate_repo_tree.return_value = {"files": {}}
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'develop']):
+    with patch(
+        'sys.argv',
+        ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'develop'],
+    ):
         result = main()
 
     assert result == 0
@@ -179,7 +185,10 @@ def test_main_repo_tree_with_tag_ref(mock_generator):
     mock_instance.generate_repo_tree.return_value = {"files": {}}
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'v2.1.0']):
+    with patch(
+        'sys.argv',
+        ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'v2.1.0'],
+    ):
         result = main()
 
     assert result == 0
@@ -198,7 +207,17 @@ def test_main_repo_tree_with_ref_no_local_clone(mock_generator):
     mock_instance.generate_repo_tree.return_value = {"files": {}}
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'feature-branch', '--no-local-clone']):
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            'https://example.com/repo',
+            '--repo-tree',
+            '--ref',
+            'feature-branch',
+            '--no-local-clone',
+        ],
+    ):
         result = main()
 
     assert result == 0
@@ -216,7 +235,10 @@ def test_main_call_stack(mock_generator):
     mock_instance.generate_call_stack.return_value = {"call_stack": []}
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', '--call-stack', '--target-file', 'test.py', '--line', '10']):
+    with patch(
+        'sys.argv',
+        ['repomap', '--call-stack', '--target-file', 'test.py', '--line', '10'],
+    ):
         result = main()
 
     assert result == 0
@@ -231,7 +253,10 @@ def test_main_print_function(mock_generator):
     mock_instance.get_function_content_by_line.return_value = "def test(): pass"
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', '--print-function', '--target-file', 'test.py', '--line', '10']):
+    with patch(
+        'sys.argv',
+        ['repomap', '--print-function', '--target-file', 'test.py', '--line', '10'],
+    ):
         result = main()
 
     assert result == 0
@@ -243,10 +268,22 @@ def test_main_print_function(mock_generator):
 def test_main_print_function_by_name(mock_generator):
     """Test main function with print function by name."""
     mock_instance = MagicMock()
-    mock_instance.get_function_content_by_name.return_value = {"global": "def test(): pass"}
+    mock_instance.get_function_content_by_name.return_value = {
+        "global": "def test(): pass"
+    }
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', '--print-function-by-name', '--name', 'test', '--repo-tree-path', 'tree.json']):
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            '--print-function-by-name',
+            '--name',
+            'test',
+            '--repo-tree-path',
+            'tree.json',
+        ],
+    ):
         result = main()
 
     assert result == 0
@@ -278,7 +315,10 @@ def test_main_repo_tree_up_to_date(mock_generator):
     mock_instance.is_repo_tree_up_to_date.return_value = True
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json']):
+    with patch(
+        'sys.argv',
+        ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json'],
+    ):
         result = main()
 
     assert result == 0
@@ -295,10 +335,16 @@ def test_main_repo_tree_outdated(mock_generator):
     """Test main function generates new tree when repo-tree is outdated."""
     mock_instance = MagicMock()
     mock_instance.is_repo_tree_up_to_date.return_value = False
-    mock_instance.generate_repo_tree.return_value = {"metadata": {"last_commit_hash": "new123"}, "files": {}}
+    mock_instance.generate_repo_tree.return_value = {
+        "metadata": {"last_commit_hash": "new123"},
+        "files": {},
+    }
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json']):
+    with patch(
+        'sys.argv',
+        ['repomap', 'https://example.com/repo', '--repo-tree', '-o', 'output.json'],
+    ):
         result = main()
 
     assert result == 0
@@ -317,7 +363,18 @@ def test_main_repo_tree_with_ref_up_to_date(mock_generator):
     mock_instance.is_repo_tree_up_to_date.return_value = True
     mock_generator.return_value = mock_instance
 
-    with patch('sys.argv', ['repomap', 'https://example.com/repo', '--repo-tree', '--ref', 'develop', '-o', 'output.json']):
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            'https://example.com/repo',
+            '--repo-tree',
+            '--ref',
+            'develop',
+            '-o',
+            'output.json',
+        ],
+    ):
         result = main()
 
     assert result == 0

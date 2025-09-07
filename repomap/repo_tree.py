@@ -17,8 +17,10 @@ logger = logging.getLogger(__name__)
 
 # Remove old logging setup as we now use proper logger above
 
+
 class TimeoutError(Exception):
     """Raised when AST parsing exceeds the timeout."""
+
     pass
 
 
@@ -29,12 +31,13 @@ def timeout_handler(signum, frame):
 
 def with_timeout(timeout_seconds: int):
     """Decorator to add timeout to function execution."""
+
     def decorator(func):
         def wrapper(*args, **kwargs):
             # Set up the signal alarm
             old_handler = signal.signal(signal.SIGALRM, timeout_handler)
             signal.alarm(timeout_seconds)
-            
+
             try:
                 result = func(*args, **kwargs)
                 return result
@@ -42,14 +45,21 @@ def with_timeout(timeout_seconds: int):
                 # Clean up the alarm
                 signal.alarm(0)
                 signal.signal(signal.SIGALRM, old_handler)
+
         return wrapper
+
     return decorator
 
 
 class RepoTreeGenerator:
     """Class for generating repository AST tree."""
 
-    def __init__(self, token: Optional[str] = None, use_multiprocessing: bool = True, use_local_clone: bool = True):
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        use_multiprocessing: bool = True,
+        use_local_clone: bool = True,
+    ):
         """Initialize the repository tree generator.
 
         Args:
@@ -108,7 +118,7 @@ class RepoTreeGenerator:
         stack = [(node, current_class)]
         iteration_count = 0
         MAX_ITERATIONS = 50000  # Prevent infinite loops
-        
+
         while stack and iteration_count < MAX_ITERATIONS:
             iteration_count += 1
             current_node, current_class = stack.pop()
@@ -196,14 +206,18 @@ class RepoTreeGenerator:
             if lang == 'go' and current_node.type == 'type_declaration':
                 try:
                     # Handle Go type declarations (struct, interface, etc.)
-                    for child in current_node.children[:10]:  # Limit children to prevent excessive iteration
+                    for child in current_node.children[
+                        :10
+                    ]:  # Limit children to prevent excessive iteration
                         if child.type == 'type_spec':
                             type_name_node = None
-                            for spec_child in child.children[:5]:  # Limit nested children
+                            for spec_child in child.children[
+                                :5
+                            ]:  # Limit nested children
                                 if spec_child.type == 'type_identifier':
                                     type_name_node = spec_child
                                     break
-                            
+
                             if type_name_node:
                                 type_name = type_name_node.text.decode('utf8')
                                 self._current_classes[type_name] = {
@@ -218,7 +232,12 @@ class RepoTreeGenerator:
                     continue
 
             # Process function/method definitions
-            if current_node.type in ('function_definition', 'method_definition', 'function_declaration', 'method_declaration'):
+            if current_node.type in (
+                'function_definition',
+                'method_definition',
+                'function_declaration',
+                'method_declaration',
+            ):
                 name_node = None
                 body_node = None
 
@@ -228,14 +247,18 @@ class RepoTreeGenerator:
                         # Handle Go function and method declarations with bounds checking
                         if current_node.type == 'function_declaration':
                             # For regular functions: func main() { ... }
-                            for child in current_node.children[:10]:  # Limit children iteration
+                            for child in current_node.children[
+                                :10
+                            ]:  # Limit children iteration
                                 if child.type == 'identifier':
                                     name_node = child
                                     break
                         elif current_node.type == 'method_declaration':
                             # For methods: func (u *User) GetName() { ... }
                             # Find the method name (field_identifier)
-                            for child in current_node.children[:15]:  # Limit children iteration
+                            for child in current_node.children[
+                                :15
+                            ]:  # Limit children iteration
                                 if child.type == 'field_identifier':
                                     name_node = child
                                     break
@@ -244,27 +267,59 @@ class RepoTreeGenerator:
                             for child in current_node.children[:10]:  # Limit iteration
                                 if child.type == 'parameter_list':
                                     # This is the receiver parameter list
-                                    for param_child in child.children[:5]:  # Limit nested iteration
+                                    for param_child in child.children[
+                                        :5
+                                    ]:  # Limit nested iteration
                                         if param_child.type == 'parameter_declaration':
-                                            for param_subchild in param_child.children[:5]:  # Limit nested iteration
-                                                if param_subchild.type == 'pointer_type':
-                                                    for ptr_child in param_subchild.children[:3]:  # Limit deeply nested iteration
-                                                        if ptr_child.type == 'type_identifier':
-                                                            receiver_type = ptr_child.text.decode('utf8')
+                                            for param_subchild in param_child.children[
+                                                :5
+                                            ]:  # Limit nested iteration
+                                                if (
+                                                    param_subchild.type
+                                                    == 'pointer_type'
+                                                ):
+                                                    for (
+                                                        ptr_child
+                                                    ) in param_subchild.children[
+                                                        :3
+                                                    ]:  # Limit deeply nested iteration
+                                                        if (
+                                                            ptr_child.type
+                                                            == 'type_identifier'
+                                                        ):
+                                                            receiver_type = (
+                                                                ptr_child.text.decode(
+                                                                    'utf8'
+                                                                )
+                                                            )
                                                             break
-                                                elif param_subchild.type == 'type_identifier':
-                                                    receiver_type = param_subchild.text.decode('utf8')
+                                                elif (
+                                                    param_subchild.type
+                                                    == 'type_identifier'
+                                                ):
+                                                    receiver_type = (
+                                                        param_subchild.text.decode(
+                                                            'utf8'
+                                                        )
+                                                    )
                                             break
                                     break
                             if receiver_type:
                                 current_class = receiver_type
-                        
+
                         # Find body node for Go
                         body_node = next(
-                            (c for c in current_node.children[:15] if c.type == 'block'), None  # Limit search
+                            (
+                                c
+                                for c in current_node.children[:15]
+                                if c.type == 'block'
+                            ),
+                            None,  # Limit search
                         )
                     except Exception as e:
-                        logger.warning(f"Error processing Go function/method declaration: {e}")
+                        logger.warning(
+                            f"Error processing Go function/method declaration: {e}"
+                        )
                         continue
                 elif lang == 'cpp':
                     declarator = next(
@@ -295,44 +350,52 @@ class RepoTreeGenerator:
                                 if subchild.type == 'identifier':
                                     name_node = subchild
                                     break
-                    
+
                     # If name_node is still not found, handle C functions with pointer return types
                     if not name_node and lang == 'c':
                         # Get the full text of the function definition for C functions with pointers
                         full_func_text = current_node.text.decode('utf8')
                         lines = full_func_text.split('\n')
-                        
+
                         # For C functions with pointer return types (like "*func_name")
                         if len(lines) > 0:
                             # Extract the function declaration line(s)
                             declaration = '\n'.join(
                                 lines[: min(3, len(lines))]
                             )  # Take first few lines
-                            
+
                             # Find opening parenthesis of parameters
                             paren_pos = declaration.find('(')
                             if paren_pos > 0:
                                 # Get everything before the parenthesis
                                 before_paren = declaration[:paren_pos].strip()
-                                
+
                                 # Handle pointer functions like "*func_name" or "type *func_name"
                                 if '*' in before_paren:
                                     # The function name is typically the last identifier before the parenthesis
                                     # It might have a * prefix or a * might be between type and name
                                     parts = before_paren.replace('*', ' * ').split()
-                                    
+
                                     # Find the last part that's not a pointer symbol
                                     for i in range(len(parts) - 1, -1, -1):
                                         if parts[i] != '*':
                                             func_name = parts[i]
-                                            name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                                            name_node = type(
+                                                'DummyNode',
+                                                (),
+                                                {'text': func_name.encode('utf8')},
+                                            )
                                             break
                                 else:
                                     # For regular functions, the name is the last part
                                     parts = before_paren.split()
                                     if parts:
                                         func_name = parts[-1]
-                                        name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                                        name_node = type(
+                                            'DummyNode',
+                                            (),
+                                            {'text': func_name.encode('utf8')},
+                                        )
 
                 if name_node:
                     func_name = name_node.text.decode('utf8')
@@ -451,10 +514,12 @@ class RepoTreeGenerator:
             else:
                 for child in reversed(current_node.children):
                     stack.append((child, current_class))
-        
+
         # Warn if we hit iteration limit
         if iteration_count >= MAX_ITERATIONS:
-            logger.warning(f"Hit iteration limit ({MAX_ITERATIONS}) in _find_functions for language: {lang}")
+            logger.warning(
+                f"Hit iteration limit ({MAX_ITERATIONS}) in _find_functions for language: {lang}"
+            )
 
     def _find_function_calls(  # noqa: C901
         self,
@@ -511,7 +576,7 @@ class RepoTreeGenerator:
                             calls.append(func_name)
                         continue
 
-                # Handle Go function calls 
+                # Handle Go function calls
                 if lang == 'go':
                     if current_node.type == 'field_identifier':
                         # This is a method call like user.GetName() or fmt.Println()
@@ -790,15 +855,22 @@ class RepoTreeGenerator:
                             for spec_child in child.children:
                                 if spec_child.type == 'interpreted_string_literal':
                                     # Remove quotes from import path
-                                    import_path = spec_child.text.decode('utf8').strip('"')
+                                    import_path = spec_child.text.decode('utf8').strip(
+                                        '"'
+                                    )
                                     ast_data["imports"].append(import_path)
                         elif child.type == 'import_spec_list':
                             # Multiple imports in parentheses
                             for spec_list_child in child.children:
                                 if spec_list_child.type == 'import_spec':
                                     for spec_child in spec_list_child.children:
-                                        if spec_child.type == 'interpreted_string_literal':
-                                            import_path = spec_child.text.decode('utf8').strip('"')
+                                        if (
+                                            spec_child.type
+                                            == 'interpreted_string_literal'
+                                        ):
+                                            import_path = spec_child.text.decode(
+                                                'utf8'
+                                            ).strip('"')
                                             ast_data["imports"].append(import_path)
                         elif child.type == 'interpreted_string_literal':
                             # Direct string import: import "fmt"
@@ -812,28 +884,31 @@ class RepoTreeGenerator:
 
     @staticmethod
     def _process_file_worker(
-        file_info: Tuple[str, Dict[str, Any], str, str, Optional[str], bool, Optional[str]]
+        file_info: Tuple[
+            str, Dict[str, Any], str, str, Optional[str], bool, Optional[str]
+        ]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
         # Create processor with local cloning disabled to avoid worker processes trying to clone
         processor = RepoTreeGenerator(token=token, use_local_clone=False)
-        
+
         try:
             start_time = time.time()
             lang = processor._detect_language(path)
             if not lang:
                 logger.debug(f"SKIP: No language detected for {path}")
                 return path, None
-            
+
             content = None
             if use_local_clone and local_clone_path:
                 # Read from local filesystem (pre-cloned by main process)
                 from pathlib import Path
+
                 file_path = Path(local_clone_path) / path
                 if not file_path.exists() or not file_path.is_file():
                     logger.debug(f"SKIP: File not found: {path}")
                     return path, None
-                
+
                 # Read file regardless of size - we want complete processing
                 try:
                     # Read entire file content without size limits
@@ -849,33 +924,37 @@ class RepoTreeGenerator:
                 if not content:
                     logger.debug(f"SKIP: No content from API for {path}")
                     return path, None
-            
+
             # Only skip truly empty files - process everything else
             if not content:
                 logger.debug(f"SKIP: Empty content for {path}")
                 return path, None
-            
+
             # More permissive binary file check - only skip obvious binary files
             null_count = content[:5000].count('\0')  # Check first 5KB
             if null_count > 10:  # Allow some null bytes but skip obviously binary files
                 logger.debug(f"SKIP: Binary file {path} (null bytes: {null_count})")
                 return path, None
-            
+
             try:
                 ast_data = processor._parse_file_ast(content, lang)
                 elapsed = time.time() - start_time
                 if elapsed > 5:  # Reduced threshold from 10s to 5s
-                    logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                    logger.warning(
+                        f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s"
+                    )
                 return path, {"language": lang, "ast": ast_data}
             except TimeoutError:
-                logger.warning(f"AST parsing timeout for {path} ({lang}) after 60s - file too complex")
+                logger.warning(
+                    f"AST parsing timeout for {path} ({lang}) after 60s - file too complex"
+                )
                 return path, None
             except Exception as e:
                 logger.debug(f"SKIP: AST parsing error for {path} ({lang}): {e}")
                 return path, None
         except Exception as e:
             logger.debug(f"SKIP: Worker error processing {path}: {e}")
-            
+
         return path, None
 
     def generate_repo_tree(  # noqa: C901
@@ -886,7 +965,7 @@ class RepoTreeGenerator:
         if not self.provider:
             self.provider = get_provider(repo_url, self.token, self.use_local_clone)
 
-        # Store original ref for cache key consistency  
+        # Store original ref for cache key consistency
         original_ref = ref
 
         # Fetch repo structure first (this handles ref validation and cloning)
@@ -896,7 +975,10 @@ class RepoTreeGenerator:
             # Handle various error messages that indicate invalid ref specifically
             error_str = str(e).lower()
             # Only catch ref-specific errors, not general repository not found errors
-            if ref and any(msg in error_str for msg in ["tree not found", "is empty", "invalid reference"]):
+            if ref and any(
+                msg in error_str
+                for msg in ["tree not found", "is empty", "invalid reference"]
+            ):
                 raise ValueError(f"No ref found in repository by name: {ref}")
             raise
 
@@ -911,7 +993,14 @@ class RepoTreeGenerator:
         self.node_count = 0
         self.MAX_NODES = 10000
 
-        repo_tree = {"metadata": {"url": repo_url, "ref": ref, "last_commit_hash": last_commit_hash}, "files": {}}
+        repo_tree = {
+            "metadata": {
+                "url": repo_url,
+                "ref": ref,
+                "last_commit_hash": last_commit_hash,
+            },
+            "files": {},
+        }
 
         files_to_process = []
 
@@ -935,7 +1024,15 @@ class RepoTreeGenerator:
 
         if self.use_multiprocessing and files_to_process:
             files_to_process_mp = [
-                (path, item, repo_url, ref, self.token, self.use_local_clone, local_clone_path)
+                (
+                    path,
+                    item,
+                    repo_url,
+                    ref,
+                    self.token,
+                    self.use_local_clone,
+                    local_clone_path,
+                )
                 for path, item, repo_url, ref in files_to_process
             ]
 
@@ -948,8 +1045,8 @@ class RepoTreeGenerator:
             )
 
             with multiprocessing.Pool(
-                processes=max_workers, 
-                maxtasksperchild=100  # Increased batch size for better efficiency
+                processes=max_workers,
+                maxtasksperchild=100,  # Increased batch size for better efficiency
             ) as pool:
                 results = pool.map(self._process_file_worker, files_to_process_mp)
                 for path, data in results:
@@ -964,9 +1061,12 @@ class RepoTreeGenerator:
                         if self.use_local_clone and local_clone_path:
                             # Read from local filesystem
                             from pathlib import Path
+
                             file_path = Path(local_clone_path) / path
                             if file_path.exists() and file_path.is_file():
-                                content = file_path.read_text(encoding='utf-8', errors='ignore')
+                                content = file_path.read_text(
+                                    encoding='utf-8', errors='ignore'
+                                )
                             else:
                                 continue
                         else:
@@ -974,22 +1074,28 @@ class RepoTreeGenerator:
                             content = self._get_file_content(
                                 f"{repo_url}/-/blob/{ref}/{path}"
                             )
-                        
+
                         if content:
                             try:
                                 ast_data = self._parse_file_ast(content, lang)
                                 elapsed = time.time() - start_time
                                 if elapsed > 10:  # Log slow files
-                                    logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                                    logger.warning(
+                                        f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s"
+                                    )
                                 repo_tree["files"][path] = {
                                     "language": lang,
                                     "ast": ast_data,
                                 }
                             except TimeoutError:
-                                logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
+                                logger.error(
+                                    f"AST parsing timeout for {path} ({lang}) after 30s"
+                                )
                                 continue
                             except Exception as e:
-                                logger.error(f"AST parsing error for {path} ({lang}): {e}")
+                                logger.error(
+                                    f"AST parsing error for {path} ({lang}): {e}"
+                                )
                                 continue
                 except Exception as e:
                     logger.error(f"Error processing {path}: {e}")
@@ -1001,7 +1107,12 @@ class RepoTreeGenerator:
 
         return repo_tree
 
-    def is_repo_tree_up_to_date(self, repo_url: str, ref: Optional[str] = None, output_path: Optional[str] = None) -> bool:
+    def is_repo_tree_up_to_date(
+        self,
+        repo_url: str,
+        ref: Optional[str] = None,
+        output_path: Optional[str] = None,
+    ) -> bool:
         """Check if repo-tree is up to date by comparing commit hashes.
 
         Args:
@@ -1020,7 +1131,7 @@ class RepoTreeGenerator:
             # Load existing repo-tree
             with open(output_path, 'r') as f:
                 existing_repo_tree = json.load(f)
-            
+
             existing_metadata = existing_repo_tree.get('metadata', {})
             existing_url = existing_metadata.get('url')
             existing_ref = existing_metadata.get('ref')
@@ -1033,10 +1144,10 @@ class RepoTreeGenerator:
             # Check if existing repo-tree has commit hash
             if not existing_hash:
                 return False
-                
+
             if not self.provider:
                 self.provider = get_provider(repo_url, self.token, self.use_local_clone)
-            
+
             # Only validate ref if we need to (when ref is provided and different from stored)
             current_ref = ref
             if not ref:
@@ -1064,11 +1175,11 @@ class RepoTreeGenerator:
             return False
 
     def generate_repo_tree_if_needed(
-        self, 
-        repo_url: str, 
+        self,
+        repo_url: str,
         ref: Optional[str] = None,
         output_path: Optional[str] = None,
-        force: bool = False
+        force: bool = False,
     ) -> Dict[str, Any]:
         """Generate repo-tree only if needed (commit hash has changed) or force is True.
 
@@ -1082,18 +1193,24 @@ class RepoTreeGenerator:
             Dict[str, Any]: Repository tree data
         """
         # Check if regeneration is needed
-        if not force and output_path and self.is_repo_tree_up_to_date(repo_url, ref, output_path):
-            print(f"Repository AST tree is up to date (no changes in commit hash). Loading existing tree.")
+        if (
+            not force
+            and output_path
+            and self.is_repo_tree_up_to_date(repo_url, ref, output_path)
+        ):
+            print(
+                f"Repository AST tree is up to date (no changes in commit hash). Loading existing tree."
+            )
             with open(output_path, 'r') as f:
                 return json.load(f)
 
         print("Repository has changes, generating new AST tree...")
         repo_tree = self.generate_repo_tree(repo_url, ref)
-        
+
         if output_path:
             self.save_repo_tree(repo_tree, output_path)
             print(f"Repository AST tree saved to {output_path}")
-        
+
         return repo_tree
 
     def save_repo_tree(self, repo_tree: Dict[str, Any], output_path: str):

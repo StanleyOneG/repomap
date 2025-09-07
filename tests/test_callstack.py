@@ -159,10 +159,21 @@ def generator():
 def fast_generator():
     """Create a CallStackGenerator with mocked tree-sitter initialization for faster tests."""
     from unittest.mock import MagicMock
+
     gen = CallStackGenerator(token=None)
     # Replace slow parsers with mocks for tests that don't need real parsing
-    gen.parsers = {'python': MagicMock(), 'c': MagicMock(), 'cpp': MagicMock(), 'go': MagicMock()}
-    gen.queries = {'python': MagicMock(), 'c': MagicMock(), 'cpp': MagicMock(), 'go': MagicMock()}
+    gen.parsers = {
+        'python': MagicMock(),
+        'c': MagicMock(),
+        'cpp': MagicMock(),
+        'go': MagicMock(),
+    }
+    gen.queries = {
+        'python': MagicMock(),
+        'c': MagicMock(),
+        'cpp': MagicMock(),
+        'go': MagicMock(),
+    }
     return gen
 
 
@@ -170,11 +181,11 @@ def fast_generator():
 def python_generator():
     """Create a CallStackGenerator with only Python parser initialized for faster tests."""
     from unittest.mock import patch
-    
+
     # Mock the SUPPORTED_LANGUAGES to only include Python
     with patch.object(CallStackGenerator, 'SUPPORTED_LANGUAGES', {'.py': 'python'}):
         gen = CallStackGenerator(token=None)
-    
+
     return gen
 
 
@@ -613,7 +624,9 @@ def test_get_function_content_go_function(mock_gitlab, generator):
     assert "processUser(user)" in content
 
     # Test getting processUser function content
-    content = generator.get_function_content_by_line(url, 35)  # Line inside processUser()
+    content = generator.get_function_content_by_line(
+        url, 35
+    )  # Line inside processUser()
     assert "func processUser(user *User) {" in content
     assert 'log.Println("User is nil")' in content
     assert "user.GetName()" in content
@@ -635,12 +648,16 @@ def test_get_function_content_go_method(mock_gitlab, generator):
     url = "https://example.com/group/project/-/blob/main/src/main.go"
 
     # Test getting GetName method content
-    content = generator.get_function_content_by_line(url, 23)  # Line inside GetName method
+    content = generator.get_function_content_by_line(
+        url, 23
+    )  # Line inside GetName method
     assert "func (u *User) GetName() string {" in content
     assert "if u == nil {" in content
     assert "return u.Name" in content
 
     # Test getting SetEmail method content
-    content = generator.get_function_content_by_line(url, 29)  # Line inside SetEmail method
+    content = generator.get_function_content_by_line(
+        url, 29
+    )  # Line inside SetEmail method
     assert "func (u *User) SetEmail(email string) {" in content
     assert "u.Email = email" in content

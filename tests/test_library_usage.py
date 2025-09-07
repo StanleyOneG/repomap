@@ -11,7 +11,7 @@ def test_repo_tree_generator_import(mock_callstack):
     # Mock CallStackGenerator to avoid tree-sitter initialization
     mock_callstack.return_value.parsers = {}
     mock_callstack.return_value.queries = {}
-    
+
     generator = RepoTreeGenerator(token="test_token")
     assert generator is not None
     assert generator.token == "test_token"
@@ -44,7 +44,7 @@ def test_repo_tree_generator_basic_usage(mock_callstack, mock_get_provider):
     # Mock CallStackGenerator to avoid tree-sitter initialization
     mock_callstack.return_value.parsers = {'python': Mock()}
     mock_callstack.return_value.queries = {'python': Mock()}
-    
+
     # Mock the provider
     mock_provider = Mock()
     mock_provider.validate_ref.return_value = "main"
