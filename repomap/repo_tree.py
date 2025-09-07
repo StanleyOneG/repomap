@@ -821,34 +821,60 @@ class RepoTreeGenerator:
         try:
             start_time = time.time()
             lang = processor._detect_language(path)
-            if lang:
-                if use_local_clone and local_clone_path:
-                    # Read from local filesystem (pre-cloned by main process)
-                    from pathlib import Path
-                    file_path = Path(local_clone_path) / path
-                    if file_path.exists() and file_path.is_file():
-                        content = file_path.read_text(encoding='utf-8', errors='ignore')
-                    else:
-                        return path, None
-                else:
-                    # Use API method
-                    content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+            if not lang:
+                logger.debug(f"SKIP: No language detected for {path}")
+                return path, None
+            
+            content = None
+            if use_local_clone and local_clone_path:
+                # Read from local filesystem (pre-cloned by main process)
+                from pathlib import Path
+                file_path = Path(local_clone_path) / path
+                if not file_path.exists() or not file_path.is_file():
+                    logger.debug(f"SKIP: File not found: {path}")
+                    return path, None
                 
-                if content:
-                    try:
-                        ast_data = processor._parse_file_ast(content, lang)
-                        elapsed = time.time() - start_time
-                        if elapsed > 10:  # Log slow files
-                            logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
-                        return path, {"language": lang, "ast": ast_data}
-                    except TimeoutError:
-                        logger.error(f"AST parsing timeout for {path} ({lang}) after 30s")
-                        return path, None
-                    except Exception as e:
-                        logger.error(f"AST parsing error for {path} ({lang}): {e}")
-                        return path, None
+                # Read file regardless of size - we want complete processing
+                try:
+                    # Read entire file content without size limits
+                    with open(file_path, 'rb') as f:
+                        content_bytes = f.read()  # Read entire file
+                    content = content_bytes.decode('utf-8', errors='ignore')
+                except (OSError, UnicodeDecodeError) as e:
+                    logger.debug(f"SKIP: Failed to read {path}: {e}")
+                    return path, None
+            else:
+                # Use API method - this should be rare with local clone enabled
+                content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+                if not content:
+                    logger.debug(f"SKIP: No content from API for {path}")
+                    return path, None
+            
+            # Only skip truly empty files - process everything else
+            if not content:
+                logger.debug(f"SKIP: Empty content for {path}")
+                return path, None
+            
+            # More permissive binary file check - only skip obvious binary files
+            null_count = content[:5000].count('\0')  # Check first 5KB
+            if null_count > 10:  # Allow some null bytes but skip obviously binary files
+                logger.debug(f"SKIP: Binary file {path} (null bytes: {null_count})")
+                return path, None
+            
+            try:
+                ast_data = processor._parse_file_ast(content, lang)
+                elapsed = time.time() - start_time
+                if elapsed > 5:  # Reduced threshold from 10s to 5s
+                    logger.warning(f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s")
+                return path, {"language": lang, "ast": ast_data}
+            except TimeoutError:
+                logger.warning(f"AST parsing timeout for {path} ({lang}) after 60s - file too complex")
+                return path, None
+            except Exception as e:
+                logger.debug(f"SKIP: AST parsing error for {path} ({lang}): {e}")
+                return path, None
         except Exception as e:
-            logger.error(f"Worker error processing {path}: {e}")
+            logger.debug(f"SKIP: Worker error processing {path}: {e}")
             
         return path, None
 
