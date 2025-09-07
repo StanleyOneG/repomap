@@ -120,14 +120,15 @@ class RepoTreeGenerator:
                     struct_node = None
                     name_node = None
 
-                    for child in current_node.children:
+                    # Limit iteration to prevent excessive processing
+                    for child in current_node.children[:10]:
                         if child.type == 'struct_specifier':
                             struct_node = child
                             # Get name from struct specifier if it exists
                             struct_name_node = next(
                                 (
                                     c
-                                    for c in child.children
+                                    for c in child.children[:10]  # Limit nested iteration
                                     if c.type == 'type_identifier'
                                 ),
                                 None,
@@ -152,7 +153,7 @@ class RepoTreeGenerator:
                     name_node = next(
                         (
                             c
-                            for c in current_node.children
+                            for c in current_node.children[:10]  # Limit iteration
                             if c.type == 'type_identifier'
                         ),
                         None,
@@ -182,13 +183,13 @@ class RepoTreeGenerator:
                         "start_line": current_node.start_point[0],
                         "end_line": current_node.end_point[0],
                     }
-                    # Process class body children with class context
-                    for child in reversed(current_node.children):
+                    # Process class body children with class context (with bounds checking)
+                    for child in reversed(current_node.children[:20]):  # Limit class children
                         if child.type == 'field_declaration_list':
-                            for grandchild in reversed(child.children):
+                            for grandchild in reversed(child.children[:50]):  # Limit field declarations
                                 stack.append((grandchild, current_class))
                         elif child.type == 'declaration_list':
-                            for grandchild in reversed(child.children):
+                            for grandchild in reversed(child.children[:50]):  # Limit declarations
                                 stack.append((grandchild, current_class))
                     continue
 
@@ -270,7 +271,7 @@ class RepoTreeGenerator:
                     declarator = next(
                         (
                             c
-                            for c in current_node.children
+                            for c in current_node.children[:15]  # Limit children iteration
                             if c.type == 'function_declarator'
                         ),
                         None,
@@ -279,60 +280,78 @@ class RepoTreeGenerator:
                         name_node = next(
                             (
                                 c
-                                for c in declarator.children
+                                for c in declarator.children[:10]  # Limit nested iteration
                                 if c.type in ('identifier', 'qualified_identifier')
                             ),
                             None,
                         )
                 else:
-                    # First try to find the function name directly
-                    for child in current_node.children:
+                    # First try to find the function name directly (with bounds checking)
+                    for child in current_node.children[:15]:  # Limit children iteration
                         if child.type == 'identifier':
                             name_node = child
                             break
                         elif child.type == 'function_declarator':
-                            for subchild in child.children:
+                            for subchild in child.children[:10]:  # Limit nested iteration
                                 if subchild.type == 'identifier':
                                     name_node = subchild
                                     break
                     
                     # If name_node is still not found, handle C functions with pointer return types
                     if not name_node and lang == 'c':
-                        # Get the full text of the function definition for C functions with pointers
-                        full_func_text = current_node.text.decode('utf8')
-                        lines = full_func_text.split('\n')
-                        
-                        # For C functions with pointer return types (like "*func_name")
-                        if len(lines) > 0:
-                            # Extract the function declaration line(s)
-                            declaration = '\n'.join(
-                                lines[: min(3, len(lines))]
-                            )  # Take first few lines
+                        try:
+                            # Get the full text of the function definition for C functions with pointers
+                            full_func_text = current_node.text.decode('utf8')
                             
-                            # Find opening parenthesis of parameters
-                            paren_pos = declaration.find('(')
-                            if paren_pos > 0:
-                                # Get everything before the parenthesis
-                                before_paren = declaration[:paren_pos].strip()
+                            # Limit processing to reasonable size to prevent hanging on huge functions
+                            if len(full_func_text) > 5000:  # Skip extremely large functions
+                                continue
                                 
-                                # Handle pointer functions like "*func_name" or "type *func_name"
-                                if '*' in before_paren:
-                                    # The function name is typically the last identifier before the parenthesis
-                                    # It might have a * prefix or a * might be between type and name
-                                    parts = before_paren.replace('*', ' * ').split()
+                            lines = full_func_text.split('\n')
+                            
+                            # For C functions with pointer return types (like "*func_name")
+                            if len(lines) > 0:
+                                # Extract the function declaration line(s) - limit to first 3 lines
+                                declaration = '\n'.join(
+                                    lines[:min(3, len(lines))]
+                                )
+                                
+                                # Limit declaration processing to reasonable length
+                                if len(declaration) > 500:  # Skip overly complex declarations
+                                    continue
+                                
+                                # Find opening parenthesis of parameters
+                                paren_pos = declaration.find('(')
+                                if paren_pos > 0:
+                                    # Get everything before the parenthesis
+                                    before_paren = declaration[:paren_pos].strip()
                                     
-                                    # Find the last part that's not a pointer symbol
-                                    for i in range(len(parts) - 1, -1, -1):
-                                        if parts[i] != '*':
-                                            func_name = parts[i]
-                                            name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
-                                            break
-                                else:
-                                    # For regular functions, the name is the last part
-                                    parts = before_paren.split()
-                                    if parts:
-                                        func_name = parts[-1]
-                                        name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                                    # Handle pointer functions like "*func_name" or "type *func_name"
+                                    if '*' in before_paren:
+                                        # The function name is typically the last identifier before the parenthesis
+                                        # It might have a * prefix or a * might be between type and name
+                                        parts = before_paren.replace('*', ' * ').split()
+                                        
+                                        # Limit parts processing to prevent excessive iteration
+                                        if len(parts) > 20:  # Skip overly complex function declarations
+                                            continue
+                                        
+                                        # Find the last part that's not a pointer symbol
+                                        for i in range(min(len(parts) - 1, 19), -1, -1):  # Limit iteration
+                                            if parts[i] != '*' and parts[i].strip():
+                                                func_name = parts[i].strip()
+                                                name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                                                break
+                                    else:
+                                        # For regular functions, the name is the last part
+                                        parts = before_paren.split()
+                                        if parts and len(parts) <= 10:  # Limit complexity
+                                            func_name = parts[-1].strip()
+                                            if func_name:  # Ensure non-empty name
+                                                name_node = type('DummyNode', (), {'text': func_name.encode('utf8')})
+                        except Exception as e:
+                            logger.warning(f"Error parsing C function name: {e}")
+                            continue
 
                 if name_node:
                     func_name = name_node.text.decode('utf8')
@@ -443,13 +462,14 @@ class RepoTreeGenerator:
                             "end_line": current_node.end_point[0],
                         },
                     )
-                    # Add class body children to stack with class context
-                    for child in reversed(body_node.children):
+                    # Add class body children to stack with class context (with bounds checking)
+                    for child in reversed(body_node.children[:100]):  # Limit class body children
                         stack.append((child, class_name))
 
-            # Process other nodes
+            # Process other nodes (with bounds checking to prevent excessive iteration)
             else:
-                for child in reversed(current_node.children):
+                # Limit children processing to prevent hanging on nodes with many children
+                for child in reversed(current_node.children[:50]):  # Limit general node children
                     stack.append((child, current_class))
         
         # Warn if we hit iteration limit
@@ -524,18 +544,20 @@ class RepoTreeGenerator:
                         calls.append(func_name)
                         continue
 
-                # Decompose attribute chain into ordered parts
-                while current_node and current_node.type in (
-                    'attribute',
-                    'qualified_identifier',
-                    'field_expression',
-                ):
+                # Decompose attribute chain into ordered parts (with bounds checking)
+                chain_depth = 0
+                MAX_CHAIN_DEPTH = 20  # Prevent infinite loops in complex expressions
+                while (current_node and 
+                       current_node.type in ('attribute', 'qualified_identifier', 'field_expression') and 
+                       chain_depth < MAX_CHAIN_DEPTH):
+                    chain_depth += 1
+                    
                     if current_node.type == 'qualified_identifier':
                         parts.extend(
                             reversed(
                                 [
                                     c.text.decode('utf8')
-                                    for c in current_node.children
+                                    for c in current_node.children[:10]  # Limit children
                                     if c.type == 'identifier'
                                 ]
                             )
@@ -545,7 +567,12 @@ class RepoTreeGenerator:
                         if len(current_node.children) >= 3:
                             attr_name = current_node.children[2].text.decode('utf8')
                             parts.append(attr_name)
-                    current_node = current_node.children[0]
+                    
+                    # Move to next node in chain with safety check
+                    if current_node.children:
+                        current_node = current_node.children[0]
+                    else:
+                        break
 
                 if current_node and current_node.type == 'identifier':
                     parts.append(current_node.text.decode('utf8'))
@@ -815,8 +842,12 @@ class RepoTreeGenerator:
         file_info: Tuple[str, Dict[str, Any], str, str, Optional[str], bool, Optional[str]]
     ) -> Tuple[str, Optional[Dict[str, Any]]]:
         path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
-        # Create processor with local cloning disabled to avoid worker processes trying to clone
-        processor = RepoTreeGenerator(token=token, use_local_clone=False)
+        
+        # Use global worker instance to avoid expensive re-initialization
+        # This will be created once per worker process and reused
+        if not hasattr(_process_file_worker, '_processor'):
+            _process_file_worker._processor = RepoTreeGenerator(token=token, use_local_clone=False)
+        processor = _process_file_worker._processor
         
         try:
             start_time = time.time()
@@ -827,12 +858,21 @@ class RepoTreeGenerator:
                     from pathlib import Path
                     file_path = Path(local_clone_path) / path
                     if file_path.exists() and file_path.is_file():
+                        # Skip extremely large files that might cause hanging
+                        file_size = file_path.stat().st_size
+                        if file_size > 2 * 1024 * 1024:  # Skip files > 2MB
+                            logger.warning(f"Skipping large file {path} ({file_size} bytes)")
+                            return path, None
                         content = file_path.read_text(encoding='utf-8', errors='ignore')
                     else:
                         return path, None
                 else:
                     # Use API method
                     content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
+                    # Skip large content from API as well
+                    if content and len(content) > 2 * 1024 * 1024:  # Skip content > 2MB
+                        logger.warning(f"Skipping large file content {path} ({len(content)} chars)")
+                        return path, None
                 
                 if content:
                     try:
@@ -913,19 +953,26 @@ class RepoTreeGenerator:
                 for path, item, repo_url, ref in files_to_process
             ]
 
-            # Optimized resource constraints
+            # Optimized resource constraints for C projects with many files
             cpu_count = multiprocessing.cpu_count()
+            # For large repos, limit workers to prevent excessive memory usage and initialization overhead
             max_workers = min(
-                cpu_count,
+                max(2, cpu_count // 2),  # Use half the cores to reduce memory pressure
                 len(files_to_process),
-                cpu_count,  # Use all available cores for CPU-intensive AST parsing
+                16  # Cap at 16 workers even on high-core machines
             )
+            
+            logger.info(f"Using {max_workers} worker processes for {len(files_to_process)} files")
 
             with multiprocessing.Pool(
                 processes=max_workers, 
-                maxtasksperchild=100  # Increased batch size for better efficiency
+                maxtasksperchild=1000  # Higher value to avoid frequent worker recycling
             ) as pool:
-                results = pool.map(self._process_file_worker, files_to_process_mp)
+                # Use chunksize to batch work and reduce overhead
+                chunksize = max(1, len(files_to_process_mp) // (max_workers * 4))
+                logger.info(f"Processing files in chunks of {chunksize}")
+                
+                results = pool.map(self._process_file_worker, files_to_process_mp, chunksize=chunksize)
                 for path, data in results:
                     if data:
                         repo_tree["files"][path] = data
@@ -940,6 +987,11 @@ class RepoTreeGenerator:
                             from pathlib import Path
                             file_path = Path(local_clone_path) / path
                             if file_path.exists() and file_path.is_file():
+                                # Skip extremely large files that might cause hanging
+                                file_size = file_path.stat().st_size
+                                if file_size > 2 * 1024 * 1024:  # Skip files > 2MB
+                                    logger.warning(f"Skipping large file {path} ({file_size} bytes)")
+                                    continue
                                 content = file_path.read_text(encoding='utf-8', errors='ignore')
                             else:
                                 continue
@@ -948,6 +1000,10 @@ class RepoTreeGenerator:
                             content = self._get_file_content(
                                 f"{repo_url}/-/blob/{ref}/{path}"
                             )
+                            # Skip large content from API as well
+                            if content and len(content) > 2 * 1024 * 1024:  # Skip content > 2MB
+                                logger.warning(f"Skipping large file content {path} ({len(content)} chars)")
+                                continue
                         
                         if content:
                             try:
