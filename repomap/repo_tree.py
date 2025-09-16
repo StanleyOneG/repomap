@@ -1039,9 +1039,9 @@ class RepoTreeGenerator:
             # Optimized resource constraints
             cpu_count = multiprocessing.cpu_count()
             max_workers = min(
-                cpu_count,
+                1,
+                cpu_count-2,
                 len(files_to_process),
-                cpu_count,  # Use all available cores for CPU-intensive AST parsing
             )
 
             with multiprocessing.Pool(
