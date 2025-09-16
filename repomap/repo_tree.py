@@ -1039,9 +1039,8 @@ class RepoTreeGenerator:
             # Optimized resource constraints
             cpu_count = multiprocessing.cpu_count()
             max_workers = min(
-                1,
-                cpu_count-2,
                 len(files_to_process),
+                cpu_count-2,
             )
 
             with multiprocessing.Pool(
