@@ -103,91 +103,98 @@ class AstGrepParser:
             List of function information dictionaries
         """
         functions = []
-        node = root.root()
+        try:
+            node = root.root()
+        except Exception:
+            return functions
 
-        if language == 'python':
-            # Find all function definitions
-            func_nodes = node.find_all(kind='function_definition')
-            for func_node in func_nodes:
-                func_info = self._extract_python_function(func_node)
-                if func_info:
-                    functions.append(func_info)
+        try:
+            if language == 'python':
+                # Find all function definitions
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_info = self._extract_python_function(func_node)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language == 'go':
-            # Find function declarations
-            func_nodes = node.find_all(kind='function_declaration')
-            for func_node in func_nodes:
-                func_info = self._extract_go_function(func_node)
-                if func_info:
-                    functions.append(func_info)
+            elif language == 'go':
+                # Find function declarations
+                func_nodes = node.find_all(kind='function_declaration')
+                for func_node in func_nodes:
+                    func_info = self._extract_go_function(func_node)
+                    if func_info:
+                        functions.append(func_info)
 
-            # Find method declarations
-            method_nodes = node.find_all(kind='method_declaration')
-            for method_node in method_nodes:
-                func_info = self._extract_go_method(method_node)
-                if func_info:
-                    functions.append(func_info)
+                # Find method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    func_info = self._extract_go_method(method_node)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language in ('c', 'cpp'):
-            # Find function definitions
-            func_nodes = node.find_all(kind='function_definition')
-            for func_node in func_nodes:
-                func_info = self._extract_c_function(func_node, language)
-                if func_info:
-                    functions.append(func_info)
+            elif language in ('c', 'cpp'):
+                # Find function definitions
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_info = self._extract_c_function(func_node, language)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language == 'java':
-            # Find method declarations
-            method_nodes = node.find_all(kind='method_declaration')
-            for method_node in method_nodes:
-                func_info = self._extract_java_method(method_node)
-                if func_info:
-                    functions.append(func_info)
+            elif language == 'java':
+                # Find method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    func_info = self._extract_java_method(method_node)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language == 'php':
-            # Find function definitions
-            func_nodes = node.find_all(kind='function_definition')
-            for func_node in func_nodes:
-                func_info = self._extract_php_function(func_node)
-                if func_info:
-                    functions.append(func_info)
+            elif language == 'php':
+                # Find function definitions
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_info = self._extract_php_function(func_node)
+                    if func_info:
+                        functions.append(func_info)
 
-            # Find method declarations
-            method_nodes = node.find_all(kind='method_declaration')
-            for method_node in method_nodes:
-                func_info = self._extract_php_method(method_node)
-                if func_info:
-                    functions.append(func_info)
+                # Find method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    func_info = self._extract_php_method(method_node)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language == 'csharp':
-            # Find method declarations
-            method_nodes = node.find_all(kind='method_declaration')
-            for method_node in method_nodes:
-                func_info = self._extract_csharp_method(method_node)
-                if func_info:
-                    functions.append(func_info)
+            elif language == 'csharp':
+                # Find method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    func_info = self._extract_csharp_method(method_node)
+                    if func_info:
+                        functions.append(func_info)
 
-        elif language in ('javascript', 'typescript', 'tsx'):
-            # Find function declarations
-            func_nodes = node.find_all(kind='function_declaration')
-            for func_node in func_nodes:
-                func_info = self._extract_js_function(func_node)
-                if func_info:
-                    functions.append(func_info)
+            elif language in ('javascript', 'typescript', 'tsx'):
+                # Find function declarations
+                func_nodes = node.find_all(kind='function_declaration')
+                for func_node in func_nodes:
+                    func_info = self._extract_js_function(func_node)
+                    if func_info:
+                        functions.append(func_info)
 
-            # Find method definitions
-            method_nodes = node.find_all(kind='method_definition')
-            for method_node in method_nodes:
-                func_info = self._extract_js_method(method_node)
-                if func_info:
-                    functions.append(func_info)
+                # Find method definitions
+                method_nodes = node.find_all(kind='method_definition')
+                for method_node in method_nodes:
+                    func_info = self._extract_js_method(method_node)
+                    if func_info:
+                        functions.append(func_info)
 
-            # Find arrow functions assigned to variables
-            arrow_nodes = node.find_all(kind='arrow_function')
-            for arrow_node in arrow_nodes:
-                func_info = self._extract_js_arrow_function(arrow_node)
-                if func_info:
-                    functions.append(func_info)
+                # Find arrow functions assigned to variables
+                arrow_nodes = node.find_all(kind='arrow_function')
+                for arrow_node in arrow_nodes:
+                    func_info = self._extract_js_arrow_function(arrow_node)
+                    if func_info:
+                        functions.append(func_info)
+        except Exception:
+            # If any ast-grep operation fails, return what we have so far
+            pass
 
         return functions
 
@@ -202,36 +209,43 @@ class AstGrepParser:
             List of class information dictionaries
         """
         classes = []
-        node = root.root()
+        try:
+            node = root.root()
+        except Exception:
+            return classes
 
-        if language == 'python':
-            class_nodes = node.find_all(kind='class_definition')
-            for class_node in class_nodes:
-                class_info = self._extract_python_class(class_node)
-                if class_info:
-                    classes.append(class_info)
+        try:
+            if language == 'python':
+                class_nodes = node.find_all(kind='class_definition')
+                for class_node in class_nodes:
+                    class_info = self._extract_python_class(class_node)
+                    if class_info:
+                        classes.append(class_info)
 
-        elif language in ('cpp', 'java', 'csharp'):
-            class_nodes = node.find_all(kind='class_declaration')
-            for class_node in class_nodes:
-                class_info = self._extract_oop_class(class_node, language)
-                if class_info:
-                    classes.append(class_info)
+            elif language in ('cpp', 'java', 'csharp'):
+                class_nodes = node.find_all(kind='class_declaration')
+                for class_node in class_nodes:
+                    class_info = self._extract_oop_class(class_node, language)
+                    if class_info:
+                        classes.append(class_info)
 
-        elif language == 'go':
-            # Go uses type declarations for structs
-            type_nodes = node.find_all(kind='type_declaration')
-            for type_node in type_nodes:
-                class_info = self._extract_go_type(type_node)
-                if class_info:
-                    classes.append(class_info)
+            elif language == 'go':
+                # Go uses type declarations for structs
+                type_nodes = node.find_all(kind='type_declaration')
+                for type_node in type_nodes:
+                    class_info = self._extract_go_type(type_node)
+                    if class_info:
+                        classes.append(class_info)
 
-        elif language in ('javascript', 'typescript', 'tsx'):
-            class_nodes = node.find_all(kind='class_declaration')
-            for class_node in class_nodes:
-                class_info = self._extract_js_class(class_node)
-                if class_info:
-                    classes.append(class_info)
+            elif language in ('javascript', 'typescript', 'tsx'):
+                class_nodes = node.find_all(kind='class_declaration')
+                for class_node in class_nodes:
+                    class_info = self._extract_js_class(class_node)
+                    if class_info:
+                        classes.append(class_info)
+        except Exception:
+            # If any ast-grep operation fails, return what we have
+            pass
 
         return classes
 
@@ -273,13 +287,17 @@ class AstGrepParser:
             try:
                 call_nodes = node.find_all(kind=kind)
                 for call_node in call_nodes:
-                    call_range = call_node.range()
-                    call_start_line = call_range.start.line
+                    try:
+                        call_range = call_node.range()
+                        call_start_line = call_range.start.line
 
-                    if start_line <= call_start_line <= end_line:
-                        call_name = self._extract_call_name(call_node, language)
-                        if call_name:
-                            calls.add(call_name)
+                        if start_line <= call_start_line <= end_line:
+                            call_name = self._extract_call_name(call_node, language)
+                            if call_name:
+                                calls.add(call_name)
+                    except Exception:
+                        # Skip problematic nodes
+                        continue
             except Exception:
                 # If the kind doesn't exist for this language, skip it
                 continue
