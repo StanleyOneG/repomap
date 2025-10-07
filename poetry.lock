@@ -40,6 +40,55 @@ files = [
 ]
 
 [[package]]
+name = "ast-grep-py"
+version = "0.30.1"
+description = "Structural Search and Rewrite code at large scale using precise AST pattern."
+optional = false
+python-versions = ">=3.8"
+files = [
+    {file = "ast_grep_py-0.30.1-cp310-cp310-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:5af53e61d1125185fd2889db9e7f56a8bc2e352a5d52728adc56c19b6b3d9528"},
+    {file = "ast_grep_py-0.30.1-cp310-cp310-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:05276f71ab47ea5df64576e06ee1f2145773d53f4a380233b5d35fb63f4139dd"},
+    {file = "ast_grep_py-0.30.1-cp310-cp310-win32.whl", hash = "sha256:c2cb306f7e47024f4c115b70b75a2649f11c09d124621f09806fa7490d4264a6"},
+    {file = "ast_grep_py-0.30.1-cp310-cp310-win_amd64.whl", hash = "sha256:53192ca14c562b72694fea4d1218b8169247ef425421aa0ec83a84607cdda186"},
+    {file = "ast_grep_py-0.30.1-cp310-none-win32.whl", hash = "sha256:c97c46d431afa071db7e82b8134a06f3ce499f3ea0bf4475fad0cd23be5411e3"},
+    {file = "ast_grep_py-0.30.1-cp310-none-win_amd64.whl", hash = "sha256:33c520b8f95c5b5f7b79fd77a57e1b3f4f8d7ac6a594370f349607a8f27e69e4"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-macosx_10_12_x86_64.whl", hash = "sha256:a97488d0e702057dfbdceaa68168a75b4a32d6053c1d71c21e8fbc6587ade7db"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:a12e65e9c766a7c6c71038d6ed8abfbc16064beb30fedad86fa663262850cff9"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:1ed9b5e76ce63b5b02d8ed24bf3340189d50254f709eee253dc4494aa549721b"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:14cdcde77fa5f8bedb9bc0b892370edbeab70144f9deed67cbfe4f8943b9dc98"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-win32.whl", hash = "sha256:6823c8513302086d853b7c856b6e2fe4f0f3ee1f4a76734f68c216eb993aae75"},
+    {file = "ast_grep_py-0.30.1-cp311-cp311-win_amd64.whl", hash = "sha256:2055f683db02fb00bf2626b60f3ab03f1fe36f83db239ce2f43661f84d46a684"},
+    {file = "ast_grep_py-0.30.1-cp311-none-win32.whl", hash = "sha256:b5371d926f178e7b6501745011bbac16313c799bfb96af167ac73f2be7afc90f"},
+    {file = "ast_grep_py-0.30.1-cp311-none-win_amd64.whl", hash = "sha256:80c94527d83b5c22f1917f858074a8dba4db418f40f81f253fd0643171fac8ee"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:741e8d6d82c808b69db4ca05574977ee1cb80ca3eff0d05216eb793964dd9b28"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:5a12426b421c19043e418d7691f705162de0d453842c1930c01cb67c877bb1f2"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:baa01d819191c84c515b65a8505844330b73bc12a8bea11530d7936ce6c18b58"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:10a6f678938fc7e9cd0a9a6ae1e34c5b1944f8b665ac9b9c5ec97a56054a7468"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-win32.whl", hash = "sha256:8076a3ad7cecfc9549a5c0d2f8941b1c033859b1b7990ad5595eb6a7d5cada23"},
+    {file = "ast_grep_py-0.30.1-cp312-cp312-win_amd64.whl", hash = "sha256:3a9b8f507d960bb7a690b1b9ec4e89fb5e1d09a68ebc9927d2efc4b84b795f7d"},
+    {file = "ast_grep_py-0.30.1-cp312-none-win32.whl", hash = "sha256:b27733ada6481855e9b8c892e9658c78484166ad5d271cb8ef390a47c10d9040"},
+    {file = "ast_grep_py-0.30.1-cp312-none-win_amd64.whl", hash = "sha256:abec9dae379b0dd0695cf4229d07ea662dfcb559487df3771aaa9ed67bc9b1ea"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:97cdcbc38685cffef5cdb564724628074be31b64b3e40cb3d3008f2d6515599c"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:fe3841cc9f18330292007c9be6a0b57bfb0eb90b7d0f7593aa8221cf9085b889"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3788c774f9a3e0703dc61f6975ae2c20844fa3da2d4207bbdf9c33f9086c3b48"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3a4365f2bc1443c4ba433589e85c041f0623ac33f90563e8c07c39bb2dcb1f88"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-win32.whl", hash = "sha256:4d79595d47cc5b8aa8903cfbf853f4601b343c7de18511251ea78fe8f06c61e6"},
+    {file = "ast_grep_py-0.30.1-cp313-cp313-win_amd64.whl", hash = "sha256:8155dd8b276f72dcfe9905c373446915f35e243dc3eb0bbb61685d36ee5a725a"},
+    {file = "ast_grep_py-0.30.1-cp313-none-win32.whl", hash = "sha256:658f3e30b5554157b44fc16ab4bb6f5cf1a701fbfc9fad2d4f7f193d7990eeb9"},
+    {file = "ast_grep_py-0.30.1-cp313-none-win_amd64.whl", hash = "sha256:a1de9979335e80b7f926e22187a916800d9f2fe6f37597ac45704fd243fc919b"},
+    {file = "ast_grep_py-0.30.1-cp39-cp39-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2e19d8b01cac4917c388b12f49e0eb2bc2cac09bc4695c05e1d1b80e0631efb2"},
+    {file = "ast_grep_py-0.30.1-cp39-cp39-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:379b1c88f50ce44500d222a0a478508b407a6e812f0dac096088fbf59c1c217f"},
+    {file = "ast_grep_py-0.30.1-cp39-cp39-win32.whl", hash = "sha256:7a1d595d8bf53bc0f8b6752607994faf1ad2798512135ff2d1cbfd87f13e541e"},
+    {file = "ast_grep_py-0.30.1-cp39-cp39-win_amd64.whl", hash = "sha256:9803ad29136308fb658a03f89ab81b42c7cc0f1da8110eda19445fc39112aaf9"},
+    {file = "ast_grep_py-0.30.1-cp39-none-win32.whl", hash = "sha256:cfa23aa51753d1936cf7f214a86358d13ce6247ef8794729ef339c33875f2568"},
+    {file = "ast_grep_py-0.30.1-cp39-none-win_amd64.whl", hash = "sha256:af17ccf93f490ded86011c686de63cc387a574f767b727ce86311fb00361adb3"},
+    {file = "ast_grep_py-0.30.1.tar.gz", hash = "sha256:4de91a265741618f338241e27c38b1d35cde8505cda8c46d0ebfdd8d9788e4db"},
+]
+
+[package.extras]
+test = ["pytest (>=7)"]
+
+[[package]]
 name = "babel"
 version = "2.17.0"
 description = "Internationalization utilities"
