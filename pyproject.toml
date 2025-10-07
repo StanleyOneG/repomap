@@ -4,9 +4,7 @@ version = "0.2.0-rc.7"
 description = ""
 authors = ["Stanislav <goncharuk.sm@yandex.ru>"]
 readme = "README.md"
-packages = [
-    { include = "repomap" }
-]
+packages = [{ include = "repomap" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"

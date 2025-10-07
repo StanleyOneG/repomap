@@ -1,0 +1,56 @@
+id: match-php-function-declaration
+language: php
+rule:
+  any:
+    # Standalone functions
+    - pattern:
+        context: |
+          <?php
+          function $FUNC($$$PARAMS) {
+            $$$BODY
+          }
+        selector: function_definition
+    - pattern:
+        context: |
+          <?php
+          function $FUNC($$$PARAMS): $RETURN_TYPE {
+            $$$BODY
+          }
+        selector: function_definition
+    # Class methods
+    - pattern:
+        context: |
+          <?php
+          class Test {
+            public function $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          <?php
+          class Test {
+            private function $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          <?php
+          class Test {
+            protected function $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          <?php
+          class Test {
+            public static function $FUNC($$$PARAMS) {
+              $$$BODY
+            }
+          }
+        selector: method_declaration

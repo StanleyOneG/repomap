@@ -1,0 +1,70 @@
+id: match-simple-function-declaration
+language: c
+rule:
+  any:
+    # - pattern:
+    #     context: |
+    #       static $TYPE *$FUNC($$$PARAMS) {
+    #         $$$BODY
+    #       }
+    #     selector: function_definition
+    # - pattern:
+    #     context: |
+    #       static $TYPE $FUNC($$$PARAMS) {
+    #         $$$BODY
+    #       }
+    #     selector: function_definition
+    # - pattern:
+    #     context: |
+    #       $TYPE *$FUNC($$$PARAMS) {
+    #         $$$BODY
+    #       }
+    #     selector: function_definition
+    # - pattern:
+    #     context: |
+    #       $TYPE $FUNC($$$PARAMS) {
+    #         $$$BODY
+    #       }
+    #     selector: function_definition
+    #
+    # Standard single-line functions
+    - pattern: $TYPE $FUNC($$$PARAMS) { $$$BODY }
+      kind: function_definition
+    - pattern: static $TYPE $FUNC($$$PARAMS) { $$$BODY }
+      kind: function_definition
+    - pattern: $TYPE *$FUNC($$$PARAMS) { $$$BODY }
+      kind: function_definition
+    - pattern: static $TYPE *$FUNC($$$PARAMS) { $$$BODY }
+      kind: function_definition
+
+    # Multi-line functions - use kind only for maximum flexibility
+    - kind: function_definition
+      has:
+        kind: identifier
+        regex: "^[A-Za-z_][A-Za-z0-9_]*$"
+
+    # More specific multi-line patterns
+    - pattern:
+        context: |
+          $TYPE
+          $FUNC($$$PARAMS)
+          {
+            $$$BODY
+          }
+        selector: function_definition
+    - pattern:
+        context: |
+          static $TYPE
+          $FUNC($$$PARAMS)
+          {
+            $$$BODY
+          }
+        selector: function_definition
+    - pattern:
+        context: |
+          $TYPE *
+          $FUNC($$$PARAMS)
+          {
+            $$$BODY
+          }
+        selector: function_definition

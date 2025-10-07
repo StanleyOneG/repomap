@@ -1,0 +1,51 @@
+id: match-javascript-function-declaration
+language: javascript
+rule:
+  any:
+    # Function declarations
+    - pattern: function $FUNC($$$PARAMS) { $$$BODY }
+      kind: function_declaration
+    - pattern: async function $FUNC($$$PARAMS) { $$$BODY }
+      kind: function_declaration
+    - pattern: function* $FUNC($$$PARAMS) { $$$BODY }
+      kind: generator_function_declaration
+    - pattern: async function* $FUNC($$$PARAMS) { $$$BODY }
+      kind: generator_function_declaration
+    # Export statements
+    - pattern: export function $FUNC($$$PARAMS) { $$$BODY }
+      kind: export_statement
+    - pattern: export default function $FUNC($$$PARAMS) { $$$BODY }
+      kind: export_statement
+    # Variable declarations with functions
+    - pattern: const $FUNC = function($$$PARAMS) { $$$BODY }
+      kind: lexical_declaration
+    - pattern: let $FUNC = function($$$PARAMS) { $$$BODY }
+      kind: lexical_declaration
+    - pattern: var $FUNC = function($$$PARAMS) { $$$BODY }
+      kind: variable_declaration
+    # Arrow functions
+    - pattern: const $FUNC = ($$$PARAMS) => { $$$BODY }
+      kind: lexical_declaration
+    - pattern: const $FUNC = async ($$$PARAMS) => { $$$BODY }
+      kind: lexical_declaration
+    - pattern: const $FUNC = $PARAM => { $$$BODY }
+      kind: lexical_declaration
+    # Method definitions (need context)
+    - pattern:
+        context: |
+          class Test {
+            $FUNC($$$PARAMS) { $$$BODY }
+          }
+        selector: method_definition
+    - pattern:
+        context: |
+          class Test {
+            async $FUNC($$$PARAMS) { $$$BODY }
+          }
+        selector: method_definition
+    - pattern:
+        context: |
+          class Test {
+            static $FUNC($$$PARAMS) { $$$BODY }
+          }
+        selector: method_definition

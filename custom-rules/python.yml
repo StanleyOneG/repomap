@@ -1,0 +1,36 @@
+id: match-python-function-definition
+language: python
+rule:
+  any:
+    - pattern:
+        context: |
+          def $FUNC($$$PARAMS):
+            $$$BODY
+        selector: function_definition
+    - pattern:
+        context: |
+          async def $FUNC($$$PARAMS):
+            $$$BODY
+        selector: function_definition
+    - pattern:
+        context: |
+          @$DECORATOR
+          def $FUNC($$$PARAMS):
+            $$$BODY
+        selector: function_definition
+    - pattern:
+        context: |
+          @$DECORATOR
+          async def $FUNC($$$PARAMS):
+            $$$BODY
+        selector: function_definition
+    - pattern:
+        context: |
+          def $FUNC($$$PARAMS) -> $RETURN_TYPE:
+            $$$BODY
+        selector: function_definition
+    - pattern:
+        context: |
+          async def $FUNC($$$PARAMS) -> $RETURN_TYPE:
+            $$$BODY
+        selector: function_definition

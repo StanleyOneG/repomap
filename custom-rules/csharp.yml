@@ -1,0 +1,117 @@
+id: match-csharp-method-declaration
+language: csharp
+rule:
+  any:
+    # Basic method declarations
+    - pattern:
+        context: |
+          class TestClass
+          {
+              public $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          class TestClass
+          {
+              private $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          class TestClass
+          {
+              protected $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          class TestClass
+          {
+              internal $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    # Package-private methods (no access modifier)
+    - pattern:
+        context: |
+          class TestClass
+          {
+              $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    # Static methods
+    - pattern:
+        context: |
+          class TestClass
+          {
+              public static $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          class TestClass
+          {
+              private static $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    # Virtual/Override methods
+    - pattern:
+        context: |
+          class TestClass
+          {
+              public virtual $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          class TestClass
+          {
+              public override $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
+    # Abstract methods
+    - pattern:
+        context: |
+          abstract class TestClass
+          {
+              public abstract $RETURN_TYPE $METHOD($$$PARAMS);
+          }
+        selector: method_declaration
+    # Async methods
+    - pattern:
+        context: |
+          class TestClass
+          {
+              public async $RETURN_TYPE $METHOD($$$PARAMS)
+              {
+                  $$$BODY
+              }
+          }
+        selector: method_declaration
