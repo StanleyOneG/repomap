@@ -4,9 +4,7 @@ version = "0.2.0-rc.7"
 description = ""
 authors = ["Stanislav <goncharuk.sm@yandex.ru>"]
 readme = "README.md"
-packages = [
-    { include = "repomap" }
-]
+packages = [{ include = "repomap" }]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -20,6 +18,7 @@ pydantic-settings = "^2.7.1"
 setuptools = "^75.8.0"
 pygithub = "^2.5.0"
 gitpython = "^3.1.45"
+ast-grep-cli = "0.39.5"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"

@@ -1,0 +1,62 @@
+id: match-java-method-declaration
+language: java
+rule:
+  any:
+    - pattern:
+        context: |
+          public $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          private $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          protected $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          public static $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          private static $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          protected static $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          static $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          public final $RETURN_TYPE $METHOD($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          public abstract $RETURN_TYPE $METHOD($$$PARAMS);
+        selector: method_declaration

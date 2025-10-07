@@ -1,0 +1,12 @@
+ruleDirs:
+  - custom-rules/
+
+languageGlobs:
+  c: ["**/*.c"]
+  cpp: ["**/*.cpp"]
+  python: ["**/*.py"]
+  javascript: ["**/*.js", "**/*.jsx"]
+  go: ["**/*.go"]
+  java: ["**/*.java"]
+  php: ["**/*.php"]
+  csharp: ["**/*.cs"]

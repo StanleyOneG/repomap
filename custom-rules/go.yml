@@ -1,0 +1,40 @@
+id: match-go-function-declaration
+language: go
+rule:
+  any:
+    - pattern:
+        context: |
+          func $FUNC($$$PARAMS) {
+            $$$BODY
+          }
+        selector: function_declaration
+    - pattern:
+        context: |
+          func $FUNC($$$PARAMS) $RETURN_TYPE {
+            $$$BODY
+          }
+        selector: function_declaration
+    - pattern:
+        context: |
+          func $FUNC($$$PARAMS) ($$$RETURNS) {
+            $$$BODY
+          }
+        selector: function_declaration
+    - pattern:
+        context: |
+          func ($RECEIVER) $FUNC($$$PARAMS) {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          func ($RECEIVER) $FUNC($$$PARAMS) $RETURN_TYPE {
+            $$$BODY
+          }
+        selector: method_declaration
+    - pattern:
+        context: |
+          func ($RECEIVER) $FUNC($$$PARAMS) ($$$RETURNS) {
+            $$$BODY
+          }
+        selector: method_declaration
