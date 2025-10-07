@@ -148,6 +148,13 @@ class AstGrepParser:
                     if func_info:
                         functions.append(func_info)
 
+                # Find constructor declarations
+                constructor_nodes = node.find_all(kind='constructor_declaration')
+                for constructor_node in constructor_nodes:
+                    func_info = self._extract_java_constructor(constructor_node)
+                    if func_info:
+                        functions.append(func_info)
+
             elif language == 'php':
                 # Find function definitions
                 func_nodes = node.find_all(kind='function_definition')
@@ -313,6 +320,10 @@ class AstGrepParser:
                 return None
 
             func_name = func_name_node.text()
+            # Validate that the function name is not empty
+            if not func_name or not func_name.strip():
+                return None
+
             return {
                 'name': func_name,
                 'start_line': func_range.start.line,
@@ -331,6 +342,10 @@ class AstGrepParser:
                 return None
 
             func_name = func_name_node.text()
+            # Validate that the function name is not empty
+            if not func_name or not func_name.strip():
+                return None
+
             return {
                 'name': func_name,
                 'start_line': func_range.start.line,
@@ -349,6 +364,9 @@ class AstGrepParser:
                 return None
 
             method_name = method_name_node.text()
+            # Validate that the method name is not empty
+            if not method_name or not method_name.strip():
+                return None
 
             # Extract receiver type
             receiver_node = method_node.field('receiver')
@@ -394,7 +412,8 @@ class AstGrepParser:
                     elif declarator_child.kind() == 'field_identifier':
                         func_name = declarator_child.text()
 
-            if not func_name:
+            # Validate that the function name is not empty
+            if not func_name or not func_name.strip():
                 return None
 
             return {
@@ -415,11 +434,37 @@ class AstGrepParser:
                 return None
 
             method_name = method_name_node.text()
+            # Validate that the method name is not empty
+            if not method_name or not method_name.strip():
+                return None
+
             return {
                 'name': method_name,
                 'start_line': method_range.start.line,
                 'end_line': method_range.end.line,
                 'node': method_node,
+            }
+        except Exception:
+            return None
+
+    def _extract_java_constructor(self, constructor_node) -> Optional[Dict[str, Any]]:
+        """Extract constructor information from Java constructor node."""
+        try:
+            constructor_range = constructor_node.range()
+            constructor_name_node = constructor_node.field('name')
+            if not constructor_name_node:
+                return None
+
+            constructor_name = constructor_name_node.text()
+            # Validate that the constructor name is not empty
+            if not constructor_name or not constructor_name.strip():
+                return None
+
+            return {
+                'name': constructor_name,
+                'start_line': constructor_range.start.line,
+                'end_line': constructor_range.end.line,
+                'node': constructor_node,
             }
         except Exception:
             return None
@@ -433,6 +478,10 @@ class AstGrepParser:
                 return None
 
             func_name = func_name_node.text()
+            # Validate that the function name is not empty
+            if not func_name or not func_name.strip():
+                return None
+
             return {
                 'name': func_name,
                 'start_line': func_range.start.line,
@@ -451,6 +500,10 @@ class AstGrepParser:
                 return None
 
             method_name = method_name_node.text()
+            # Validate that the method name is not empty
+            if not method_name or not method_name.strip():
+                return None
+
             return {
                 'name': method_name,
                 'start_line': method_range.start.line,
@@ -469,6 +522,10 @@ class AstGrepParser:
                 return None
 
             method_name = method_name_node.text()
+            # Validate that the method name is not empty
+            if not method_name or not method_name.strip():
+                return None
+
             return {
                 'name': method_name,
                 'start_line': method_range.start.line,
@@ -487,6 +544,10 @@ class AstGrepParser:
                 return None
 
             func_name = func_name_node.text()
+            # Validate that the function name is not empty
+            if not func_name or not func_name.strip():
+                return None
+
             return {
                 'name': func_name,
                 'start_line': func_range.start.line,
@@ -505,6 +566,10 @@ class AstGrepParser:
                 return None
 
             method_name = method_name_node.text()
+            # Validate that the method name is not empty
+            if not method_name or not method_name.strip():
+                return None
+
             return {
                 'name': method_name,
                 'start_line': method_range.start.line,
@@ -522,9 +587,14 @@ class AstGrepParser:
             if parent and parent.kind() == 'variable_declarator':
                 name_node = parent.field('name')
                 if name_node:
+                    func_name = name_node.text()
+                    # Validate that the function name is not empty
+                    if not func_name or not func_name.strip():
+                        return None
+
                     arrow_range = arrow_node.range()
                     return {
-                        'name': name_node.text(),
+                        'name': func_name,
                         'start_line': arrow_range.start.line,
                         'end_line': arrow_range.end.line,
                         'node': arrow_node,
@@ -635,41 +705,140 @@ class AstGrepParser:
             return None
 
     def find_function_at_line(
-        self, root: SgRoot, line_number: int
+        self, root: SgRoot, line_number: int, language: str
     ) -> Optional[Dict[str, Any]]:
         """Find the function containing the specified line number.
 
         Args:
             root: SgRoot object
             line_number: Line number to search for
+            language: Programming language
 
         Returns:
             Function information dict or None if not found
         """
-        node = root.root()
+        try:
+            node = root.root()
+        except Exception:
+            return None
 
-        # Find all function-like nodes
-        function_kinds = [
-            'function_definition',
-            'function_declaration',
-            'method_definition',
-            'method_declaration',
-        ]
+        # Use the same logic as find_functions to get all functions and find the one containing the line
+        try:
+            if language == 'python':
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_range = func_node.range()
+                    if func_range.start.line <= line_number <= func_range.end.line:
+                        func_info = self._extract_python_function(func_node)
+                        if func_info:
+                            return func_info
 
-        for kind in function_kinds:
-            func_nodes = node.find_all(kind=kind)
-            for func_node in func_nodes:
-                func_range = func_node.range()
-                if func_range.start.line <= line_number <= func_range.end.line:
-                    # Extract function name
-                    func_name_node = func_node.field('name')
-                    if func_name_node:
-                        return {
-                            'name': func_name_node.text(),
-                            'start_line': func_range.start.line,
-                            'end_line': func_range.end.line,
-                            'node': func_node,
-                        }
+            elif language == 'go':
+                # Check function declarations
+                func_nodes = node.find_all(kind='function_declaration')
+                for func_node in func_nodes:
+                    func_range = func_node.range()
+                    if func_range.start.line <= line_number <= func_range.end.line:
+                        func_info = self._extract_go_function(func_node)
+                        if func_info:
+                            return func_info
+
+                # Check method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    method_range = method_node.range()
+                    if method_range.start.line <= line_number <= method_range.end.line:
+                        func_info = self._extract_go_method(method_node)
+                        if func_info:
+                            return func_info
+
+            elif language in ('c', 'cpp'):
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_range = func_node.range()
+                    if func_range.start.line <= line_number <= func_range.end.line:
+                        func_info = self._extract_c_function(func_node, language)
+                        if func_info:
+                            return func_info
+
+            elif language == 'java':
+                # Check method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    method_range = method_node.range()
+                    if method_range.start.line <= line_number <= method_range.end.line:
+                        func_info = self._extract_java_method(method_node)
+                        if func_info:
+                            return func_info
+
+                # Check constructor declarations
+                constructor_nodes = node.find_all(kind='constructor_declaration')
+                for constructor_node in constructor_nodes:
+                    constructor_range = constructor_node.range()
+                    if constructor_range.start.line <= line_number <= constructor_range.end.line:
+                        func_info = self._extract_java_constructor(constructor_node)
+                        if func_info:
+                            return func_info
+
+            elif language == 'php':
+                # Check function definitions
+                func_nodes = node.find_all(kind='function_definition')
+                for func_node in func_nodes:
+                    func_range = func_node.range()
+                    if func_range.start.line <= line_number <= func_range.end.line:
+                        func_info = self._extract_php_function(func_node)
+                        if func_info:
+                            return func_info
+
+                # Check method declarations
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    method_range = method_node.range()
+                    if method_range.start.line <= line_number <= method_range.end.line:
+                        func_info = self._extract_php_method(method_node)
+                        if func_info:
+                            return func_info
+
+            elif language == 'csharp':
+                method_nodes = node.find_all(kind='method_declaration')
+                for method_node in method_nodes:
+                    method_range = method_node.range()
+                    if method_range.start.line <= line_number <= method_range.end.line:
+                        func_info = self._extract_csharp_method(method_node)
+                        if func_info:
+                            return func_info
+
+            elif language in ('javascript', 'typescript', 'tsx'):
+                # Check function declarations
+                func_nodes = node.find_all(kind='function_declaration')
+                for func_node in func_nodes:
+                    func_range = func_node.range()
+                    if func_range.start.line <= line_number <= func_range.end.line:
+                        func_info = self._extract_js_function(func_node)
+                        if func_info:
+                            return func_info
+
+                # Check method definitions
+                method_nodes = node.find_all(kind='method_definition')
+                for method_node in method_nodes:
+                    method_range = method_node.range()
+                    if method_range.start.line <= line_number <= method_range.end.line:
+                        func_info = self._extract_js_method(method_node)
+                        if func_info:
+                            return func_info
+
+                # Check arrow functions
+                arrow_nodes = node.find_all(kind='arrow_function')
+                for arrow_node in arrow_nodes:
+                    arrow_range = arrow_node.range()
+                    if arrow_range.start.line <= line_number <= arrow_range.end.line:
+                        func_info = self._extract_js_arrow_function(arrow_node)
+                        if func_info:
+                            return func_info
+
+        except Exception:
+            # If any error occurs, return None
+            pass
 
         return None
 

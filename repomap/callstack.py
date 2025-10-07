@@ -77,7 +77,7 @@ class CallStackGenerator:
         if not root:
             return None
 
-        func_info = self.ast_grep.find_function_at_line(root, line)
+        func_info = self.ast_grep.find_function_at_line(root, line, lang)
         if func_info:
             return (func_info['name'], func_info['start_line'], func_info['end_line'])
 

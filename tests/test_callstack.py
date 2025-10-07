@@ -573,10 +573,10 @@ def test_generate_call_stack_go_function(mock_gitlab, generator):
     assert call_stack[0]['function'] == 'main'
     assert call_stack[0]['file'] == url
     assert call_stack[0]['line'] == 15
-    # Check for function calls inside main
-    assert 'Printf' in call_stack[0]['calls']
+    # Check for function calls inside main (ast-grep returns fully qualified names)
+    assert 'fmt.Printf' in call_stack[0]['calls']
     assert 'processUser' in call_stack[0]['calls']
-    assert 'GetName' in call_stack[0]['calls']
+    assert 'user.GetName' in call_stack[0]['calls']
 
 
 @patch('gitlab.Gitlab')
