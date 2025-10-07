@@ -399,7 +399,17 @@ class AstGrepParser:
             if not declarator:
                 return None
 
-            # Handle different declarator types
+            # Handle pointer and reference declarators (for functions returning pointers/references)
+            # Navigate through pointer_declarator/reference_declarator to get to function_declarator
+            while declarator and declarator.kind() in ('pointer_declarator', 'reference_declarator'):
+                # Get the child declarator within the pointer/reference declarator
+                child = declarator.field('declarator')
+                if child:
+                    declarator = child
+                else:
+                    break
+
+            # Now declarator should be a function_declarator
             func_name = None
             if declarator.kind() == 'function_declarator':
                 declarator_child = declarator.field('declarator')
