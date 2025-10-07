@@ -4,6 +4,8 @@ import json
 import logging
 import multiprocessing
 import os
+import queue
+import threading
 import time
 from multiprocessing import Queue
 from typing import Any, Dict, List, Optional, Tuple
@@ -127,7 +129,7 @@ class RepoTreeGenerator:
                     file_size = file_path.stat().st_size
                     # Skip files larger than 5MB to prevent hanging
                     if file_size > 5 * 1024 * 1024:
-                        logger.info(f"Skipping large file {path} ({file_size / 1024 / 1024:.2f}MB)")
+                        # Don't log from workers - can cause deadlock
                         return path, None
                 except OSError:
                     return path, None
@@ -140,10 +142,8 @@ class RepoTreeGenerator:
                 except (OSError, UnicodeDecodeError):
                     return path, None
             else:
-                # Use API method - this should be rare with local clone enabled
-                content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
-                if not content:
-                    return path, None
+                # Without local clone, skip (API access from workers is not supported)
+                return path, None
 
             # Only skip truly empty files - process everything else
             if not content:
@@ -152,7 +152,7 @@ class RepoTreeGenerator:
             # Skip very long files (might have pathological structure)
             line_count = content.count('\n')
             if line_count > 50000:  # Skip files with more than 50k lines
-                logger.info(f"Skipping file with too many lines {path} ({line_count} lines)")
+                # Don't log from workers - can cause deadlock
                 return path, None
 
             # More permissive binary file check - only skip obvious binary files
@@ -161,21 +161,14 @@ class RepoTreeGenerator:
                 return path, None
 
             try:
-                # Log start of parsing for files that might be problematic
-                if len(content) > 100000:  # Log for files > 100KB
-                    logger.debug(f"Parsing large file {path} ({len(content)} bytes)")
-
                 # Use parser directly instead of creating a new RepoTreeGenerator
                 ast_data = parser.extract_comprehensive_ast_data(content, lang)
-                elapsed = time.time() - start_time
-                if elapsed > 1:  # Log files taking more than 1 second
-                    logger.info(f"Parsed {path} ({lang}) in {elapsed:.2f}s")
                 return path, {"language": lang, "ast": ast_data}
             except KeyboardInterrupt:
                 # Re-raise keyboard interrupt to allow graceful shutdown
                 raise
-            except Exception as e:
-                logger.warning(f"Error parsing {path} ({lang}): {str(e)[:100]}")
+            except Exception:
+                # Don't log from workers - can cause deadlock on macOS
                 return path, None
         except Exception:
             pass
@@ -285,16 +278,74 @@ class RepoTreeGenerator:
                 parsed_count = 0
                 skipped_count = 0
 
+                # Create a queue to receive results with timeout support
+                result_queue = queue.Queue()
+                exception_holder = []
+
+                def consume_results():
+                    """Thread function to consume results from iterator"""
+                    try:
+                        for result in results_iter:
+                            result_queue.put(('result', result))
+                    except KeyboardInterrupt:
+                        result_queue.put(('interrupt', None))
+                    except Exception as e:
+                        exception_holder.append(e)
+                        result_queue.put(('error', e))
+                    finally:
+                        result_queue.put(('done', None))
+
+                # Start consumer thread
+                consumer_thread = threading.Thread(target=consume_results, daemon=True)
+                consumer_thread.start()
+
+                # Process results with timeout per result
+                timeout_seconds = 60  # 60 second timeout per result batch
+                consecutive_timeouts = 0
+                max_consecutive_timeouts = 3
+
                 try:
-                    for path, data in results_iter:
-                        if data:
-                            repo_tree["files"][path] = data
-                            parsed_count += 1
-                        else:
-                            skipped_count += 1
-                        processed += 1
-                        if processed % 100 == 0:
-                            logger.info(f"Processed {processed}/{len(files_to_process)} files ({parsed_count} parsed, {skipped_count} skipped)")
+                    while True:
+                        try:
+                            msg_type, data = result_queue.get(timeout=timeout_seconds)
+                            consecutive_timeouts = 0  # Reset on successful get
+
+                            if msg_type == 'done':
+                                break
+                            elif msg_type == 'interrupt':
+                                raise KeyboardInterrupt()
+                            elif msg_type == 'error':
+                                raise data
+                            elif msg_type == 'result':
+                                path, ast_data = data
+                                if ast_data:
+                                    repo_tree["files"][path] = ast_data
+                                    parsed_count += 1
+                                else:
+                                    skipped_count += 1
+                                processed += 1
+
+                                if processed % 100 == 0:
+                                    logger.info(f"Processed {processed}/{len(files_to_process)} files ({parsed_count} parsed, {skipped_count} skipped)")
+
+                        except queue.Empty:
+                            # No result received within timeout
+                            consecutive_timeouts += 1
+                            logger.warning(
+                                f"No result received for {timeout_seconds}s "
+                                f"(timeout {consecutive_timeouts}/{max_consecutive_timeouts}, "
+                                f"processed {processed}/{len(files_to_process)})"
+                            )
+
+                            if consecutive_timeouts >= max_consecutive_timeouts:
+                                logger.error(
+                                    f"Hit {max_consecutive_timeouts} consecutive timeouts, "
+                                    f"terminating workers"
+                                )
+                                pool.terminate()
+                                pool.join()
+                                break
+
                 except KeyboardInterrupt:
                     logger.info("Interrupted by user, terminating workers...")
                     pool.terminate()
