@@ -13,6 +13,17 @@ from .providers import get_provider
 
 logger = logging.getLogger(__name__)
 
+# Global parser instance for worker processes (initialized once per worker)
+_worker_parser = None
+
+
+def _get_worker_parser():
+    """Get or create the parser instance for this worker process."""
+    global _worker_parser
+    if _worker_parser is None:
+        _worker_parser = AstGrepParser()
+    return _worker_parser
+
 
 class TimeoutError(Exception):
     """Raised when AST parsing exceeds the timeout."""
@@ -126,14 +137,14 @@ class RepoTreeGenerator:
             Tuple of file path and parsed data
         """
         path, item, repo_url, ref, token, use_local_clone, local_clone_path = file_info
-        # Create processor with local cloning disabled to avoid worker processes trying to clone
-        processor = RepoTreeGenerator(token=token, use_local_clone=False)
+
+        # Use global parser instance to avoid re-initialization overhead
+        parser = _get_worker_parser()
 
         try:
             start_time = time.time()
-            lang = processor._detect_language(path)
+            lang = parser.detect_language(path)
             if not lang:
-                logger.debug(f"SKIP: No language detected for {path}")
                 return path, None
 
             content = None
@@ -143,7 +154,6 @@ class RepoTreeGenerator:
 
                 file_path = Path(local_clone_path) / path
                 if not file_path.exists() or not file_path.is_file():
-                    logger.debug(f"SKIP: File not found: {path}")
                     return path, None
 
                 # Read file regardless of size - we want complete processing
@@ -152,45 +162,35 @@ class RepoTreeGenerator:
                     with open(file_path, 'rb') as f:
                         content_bytes = f.read()  # Read entire file
                     content = content_bytes.decode('utf-8', errors='ignore')
-                except (OSError, UnicodeDecodeError) as e:
-                    logger.debug(f"SKIP: Failed to read {path}: {e}")
+                except (OSError, UnicodeDecodeError):
                     return path, None
             else:
                 # Use API method - this should be rare with local clone enabled
                 content = processor._get_file_content(f"{repo_url}/-/blob/{ref}/{path}")
                 if not content:
-                    logger.debug(f"SKIP: No content from API for {path}")
                     return path, None
 
             # Only skip truly empty files - process everything else
             if not content:
-                logger.debug(f"SKIP: Empty content for {path}")
                 return path, None
 
             # More permissive binary file check - only skip obvious binary files
             null_count = content[:5000].count('\0')  # Check first 5KB
             if null_count > 10:  # Allow some null bytes but skip obviously binary files
-                logger.debug(f"SKIP: Binary file {path} (null bytes: {null_count})")
                 return path, None
 
             try:
-                ast_data = processor._parse_file_ast(content, lang)
+                # Use parser directly instead of creating a new RepoTreeGenerator
+                ast_data = parser.extract_comprehensive_ast_data(content, lang)
                 elapsed = time.time() - start_time
-                if elapsed > 5:  # Reduced threshold from 10s to 5s
-                    logger.warning(
-                        f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s"
-                    )
+                if elapsed > 1:  # Log files taking more than 1 second
+                    logger.info(f"Parsed {path} ({lang}) in {elapsed:.2f}s")
                 return path, {"language": lang, "ast": ast_data}
-            except TimeoutError:
-                logger.warning(
-                    f"AST parsing timeout for {path} ({lang}) after 30s - file too complex"
-                )
-                return path, None
             except Exception as e:
-                logger.debug(f"SKIP: AST parsing error for {path} ({lang}): {e}")
+                logger.debug(f"Error parsing {path} ({lang}): {e}")
                 return path, None
-        except Exception as e:
-            logger.debug(f"SKIP: Worker error processing {path}: {e}")
+        except Exception:
+            pass
 
         return path, None
 
@@ -283,17 +283,26 @@ class RepoTreeGenerator:
             cpu_count = multiprocessing.cpu_count()
             max_workers = min(
                 len(files_to_process),
-                cpu_count - 2,
+                max(1, cpu_count - 1),  # Use cpu_count - 1, but at least 1
             )
+            logger.info(f"Processing {len(files_to_process)} files with {max_workers} workers")
 
             with multiprocessing.Pool(
                 processes=max_workers,
                 maxtasksperchild=100,  # Increased batch size for better efficiency
             ) as pool:
-                results = pool.map(self._process_file_worker, files_to_process_mp)
-                for path, data in results:
+                # Use imap_unordered for progress tracking
+                results_iter = pool.imap_unordered(self._process_file_worker, files_to_process_mp, chunksize=10)
+                processed = 0
+                parsed_count = 0
+                for path, data in results_iter:
                     if data:
                         repo_tree["files"][path] = data
+                        parsed_count += 1
+                    processed += 1
+                    if processed % 100 == 0:
+                        logger.info(f"Processed {processed}/{len(files_to_process)} files ({parsed_count} parsed)")
+                logger.info(f"Completed: {parsed_count}/{len(files_to_process)} files successfully parsed")
         else:
             for path, item, repo_url, ref in files_to_process:
                 try:
