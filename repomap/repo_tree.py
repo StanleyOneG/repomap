@@ -4,7 +4,6 @@ import json
 import logging
 import multiprocessing
 import os
-import signal
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,39 +22,6 @@ def _get_worker_parser():
     if _worker_parser is None:
         _worker_parser = AstGrepParser()
     return _worker_parser
-
-
-class TimeoutError(Exception):
-    """Raised when AST parsing exceeds the timeout."""
-
-    pass
-
-
-def timeout_handler(signum, frame):
-    """Signal handler for timeout."""
-    raise TimeoutError("AST parsing timed out")
-
-
-def with_timeout(timeout_seconds: int):
-    """Decorator to add timeout to function execution."""
-
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            # Set up the signal alarm
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(timeout_seconds)
-
-            try:
-                result = func(*args, **kwargs)
-                return result
-            finally:
-                # Clean up the alarm
-                signal.alarm(0)
-                signal.signal(signal.SIGALRM, old_handler)
-
-        return wrapper
-
-    return decorator
 
 
 class RepoTreeGenerator:
@@ -109,7 +75,6 @@ class RepoTreeGenerator:
         """
         return self.ast_grep.detect_language(file_path)
 
-    @with_timeout(30)  # 30 second timeout for AST parsing
     def _parse_file_ast(self, content: str, lang: str) -> Dict[str, Any]:
         """Parse file AST using ast-grep.
 
@@ -330,19 +295,14 @@ class RepoTreeGenerator:
                             try:
                                 ast_data = self._parse_file_ast(content, lang)
                                 elapsed = time.time() - start_time
-                                if elapsed > 10:  # Log slow files
-                                    logger.warning(
-                                        f"Slow AST parsing for {path} ({lang}): {elapsed:.2f}s"
+                                if elapsed > 1:  # Log slow files
+                                    logger.info(
+                                        f"Parsed {path} ({lang}) in {elapsed:.2f}s"
                                     )
                                 repo_tree["files"][path] = {
                                     "language": lang,
                                     "ast": ast_data,
                                 }
-                            except TimeoutError:
-                                logger.error(
-                                    f"AST parsing timeout for {path} ({lang}) after 30s"
-                                )
-                                continue
                             except Exception as e:
                                 logger.error(
                                     f"AST parsing error for {path} ({lang}): {e}"
