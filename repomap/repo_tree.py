@@ -5,6 +5,7 @@ import logging
 import multiprocessing
 import os
 import time
+from multiprocessing import Queue
 from typing import Any, Dict, List, Optional, Tuple
 
 from .ast_grep_utils import AstGrepParser
@@ -121,11 +122,20 @@ class RepoTreeGenerator:
                 if not file_path.exists() or not file_path.is_file():
                     return path, None
 
-                # Read file regardless of size - we want complete processing
+                # Check file size - skip very large files that might hang
                 try:
-                    # Read entire file content without size limits
+                    file_size = file_path.stat().st_size
+                    # Skip files larger than 5MB to prevent hanging
+                    if file_size > 5 * 1024 * 1024:
+                        logger.info(f"Skipping large file {path} ({file_size / 1024 / 1024:.2f}MB)")
+                        return path, None
+                except OSError:
+                    return path, None
+
+                # Read file
+                try:
                     with open(file_path, 'rb') as f:
-                        content_bytes = f.read()  # Read entire file
+                        content_bytes = f.read()
                     content = content_bytes.decode('utf-8', errors='ignore')
                 except (OSError, UnicodeDecodeError):
                     return path, None
@@ -139,20 +149,33 @@ class RepoTreeGenerator:
             if not content:
                 return path, None
 
+            # Skip very long files (might have pathological structure)
+            line_count = content.count('\n')
+            if line_count > 50000:  # Skip files with more than 50k lines
+                logger.info(f"Skipping file with too many lines {path} ({line_count} lines)")
+                return path, None
+
             # More permissive binary file check - only skip obvious binary files
             null_count = content[:5000].count('\0')  # Check first 5KB
             if null_count > 10:  # Allow some null bytes but skip obviously binary files
                 return path, None
 
             try:
+                # Log start of parsing for files that might be problematic
+                if len(content) > 100000:  # Log for files > 100KB
+                    logger.debug(f"Parsing large file {path} ({len(content)} bytes)")
+
                 # Use parser directly instead of creating a new RepoTreeGenerator
                 ast_data = parser.extract_comprehensive_ast_data(content, lang)
                 elapsed = time.time() - start_time
                 if elapsed > 1:  # Log files taking more than 1 second
                     logger.info(f"Parsed {path} ({lang}) in {elapsed:.2f}s")
                 return path, {"language": lang, "ast": ast_data}
+            except KeyboardInterrupt:
+                # Re-raise keyboard interrupt to allow graceful shutdown
+                raise
             except Exception as e:
-                logger.debug(f"Error parsing {path} ({lang}): {e}")
+                logger.warning(f"Error parsing {path} ({lang}): {str(e)[:100]}")
                 return path, None
         except Exception:
             pass
@@ -260,14 +283,25 @@ class RepoTreeGenerator:
                 results_iter = pool.imap_unordered(self._process_file_worker, files_to_process_mp, chunksize=10)
                 processed = 0
                 parsed_count = 0
-                for path, data in results_iter:
-                    if data:
-                        repo_tree["files"][path] = data
-                        parsed_count += 1
-                    processed += 1
-                    if processed % 100 == 0:
-                        logger.info(f"Processed {processed}/{len(files_to_process)} files ({parsed_count} parsed)")
-                logger.info(f"Completed: {parsed_count}/{len(files_to_process)} files successfully parsed")
+                skipped_count = 0
+
+                try:
+                    for path, data in results_iter:
+                        if data:
+                            repo_tree["files"][path] = data
+                            parsed_count += 1
+                        else:
+                            skipped_count += 1
+                        processed += 1
+                        if processed % 100 == 0:
+                            logger.info(f"Processed {processed}/{len(files_to_process)} files ({parsed_count} parsed, {skipped_count} skipped)")
+                except KeyboardInterrupt:
+                    logger.info("Interrupted by user, terminating workers...")
+                    pool.terminate()
+                    pool.join()
+                    raise
+
+                logger.info(f"Completed: {parsed_count}/{len(files_to_process)} files successfully parsed, {skipped_count} skipped")
         else:
             for path, item, repo_url, ref in files_to_process:
                 try:
