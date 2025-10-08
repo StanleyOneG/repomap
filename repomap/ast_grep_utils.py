@@ -324,12 +324,29 @@ class AstGrepParser:
             if not func_name or not func_name.strip():
                 return None
 
-            return {
+            # Check if this function is inside a class
+            class_name = None
+            parent = func_node.parent()
+            while parent:
+                if parent.kind() == 'class_definition':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': func_name,
                 'start_line': func_range.start.line,
                 'end_line': func_range.end.line,
                 'node': func_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -411,6 +428,7 @@ class AstGrepParser:
 
             # Now declarator should be a function_declarator
             func_name = None
+            class_name = None
             if declarator.kind() == 'function_declarator':
                 declarator_child = declarator.field('declarator')
                 if declarator_child:
@@ -418,7 +436,14 @@ class AstGrepParser:
                         func_name = declarator_child.text()
                     elif declarator_child.kind() == 'qualified_identifier':
                         # For C++ qualified identifiers (Class::method)
-                        func_name = declarator_child.text()
+                        full_name = declarator_child.text()
+                        func_name = full_name
+                        # Extract class name from qualified identifier
+                        if '::' in full_name:
+                            parts = full_name.split('::')
+                            if len(parts) >= 2:
+                                class_name = '::'.join(parts[:-1])
+                                func_name = parts[-1]
                     elif declarator_child.kind() == 'field_identifier':
                         func_name = declarator_child.text()
 
@@ -426,12 +451,29 @@ class AstGrepParser:
             if not func_name or not func_name.strip():
                 return None
 
-            return {
+            # Check if this function is inside a class declaration (for inline methods)
+            if not class_name and language == 'cpp':
+                parent = func_node.parent()
+                while parent:
+                    if parent.kind() == 'class_specifier':
+                        # Found parent class
+                        class_name_node = parent.field('name')
+                        if class_name_node:
+                            class_name = class_name_node.text()
+                        break
+                    parent = parent.parent()
+
+            result = {
                 'name': func_name,
                 'start_line': func_range.start.line,
                 'end_line': func_range.end.line,
                 'node': func_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -448,12 +490,29 @@ class AstGrepParser:
             if not method_name or not method_name.strip():
                 return None
 
-            return {
+            # Check if this method is inside a class
+            class_name = None
+            parent = method_node.parent()
+            while parent:
+                if parent.kind() == 'class_declaration':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': method_name,
                 'start_line': method_range.start.line,
                 'end_line': method_range.end.line,
                 'node': method_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -470,12 +529,29 @@ class AstGrepParser:
             if not constructor_name or not constructor_name.strip():
                 return None
 
-            return {
+            # Check if this constructor is inside a class
+            class_name = None
+            parent = constructor_node.parent()
+            while parent:
+                if parent.kind() == 'class_declaration':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': constructor_name,
                 'start_line': constructor_range.start.line,
                 'end_line': constructor_range.end.line,
                 'node': constructor_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -514,12 +590,29 @@ class AstGrepParser:
             if not method_name or not method_name.strip():
                 return None
 
-            return {
+            # Check if this method is inside a class
+            class_name = None
+            parent = method_node.parent()
+            while parent:
+                if parent.kind() == 'class_declaration':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': method_name,
                 'start_line': method_range.start.line,
                 'end_line': method_range.end.line,
                 'node': method_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -536,12 +629,29 @@ class AstGrepParser:
             if not method_name or not method_name.strip():
                 return None
 
-            return {
+            # Check if this method is inside a class
+            class_name = None
+            parent = method_node.parent()
+            while parent:
+                if parent.kind() == 'class_declaration':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': method_name,
                 'start_line': method_range.start.line,
                 'end_line': method_range.end.line,
                 'node': method_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -580,12 +690,29 @@ class AstGrepParser:
             if not method_name or not method_name.strip():
                 return None
 
-            return {
+            # Check if this method is inside a class
+            class_name = None
+            parent = method_node.parent()
+            while parent:
+                if parent.kind() == 'class_declaration':
+                    # Found parent class
+                    class_name_node = parent.field('name')
+                    if class_name_node:
+                        class_name = class_name_node.text()
+                    break
+                parent = parent.parent()
+
+            result = {
                 'name': method_name,
                 'start_line': method_range.start.line,
                 'end_line': method_range.end.line,
                 'node': method_node,
             }
+
+            if class_name:
+                result['class'] = class_name
+
+            return result
         except Exception:
             return None
 
@@ -702,15 +829,166 @@ class AstGrepParser:
             # Handle different call patterns
             if func_field.kind() == 'identifier':
                 return func_field.text()
-            elif func_field.kind() in ('attribute', 'member_expression', 'selector_expression'):
-                # For method calls like obj.method()
-                # Get the full chain or just the method name
-                return func_field.text()
             elif func_field.kind() == 'field_identifier':
                 return func_field.text()
+            elif func_field.kind() in ('attribute', 'member_expression', 'selector_expression'):
+                # For method calls like obj.method()
+                # Extract object and attribute separately to avoid multi-line chains
+                call_name = self._extract_member_call_name(func_field, language)
+                return call_name if call_name else func_field.text()
             else:
-                return func_field.text()
+                # For other types, get text but clean it up
+                text = func_field.text()
+                # Remove excessive whitespace and newlines
+                if text:
+                    # Replace multiple whitespace/newlines with single space
+                    import re
+                    text = re.sub(r'\s+', ' ', text).strip()
+                    # If still multi-line or very long, just get first part
+                    if len(text) > 100:
+                        return None
+                return text
 
+        except Exception:
+            return None
+
+    def _extract_member_call_name(self, member_node, language: str) -> Optional[str]:
+        """Extract a clean call name from a member expression."""
+        try:
+            if language == 'python':
+                # For Python attribute access
+                # Get the object (left side)
+                obj_field = member_node.field('object')
+                # Get the attribute (right side)
+                attr_field = member_node.field('attribute')
+
+                if obj_field and attr_field:
+                    attr_name = attr_field.text()
+
+                    # Try to get the root object in a chain
+                    root_obj = self._get_root_object(obj_field, language)
+
+                    if root_obj:
+                        return f"{root_obj}.{attr_name}"
+                    else:
+                        # Fallback to just the attribute
+                        return attr_name
+
+            elif language in ('javascript', 'typescript', 'tsx'):
+                # For JS member expressions
+                obj_field = member_node.field('object')
+                prop_field = member_node.field('property')
+
+                if obj_field and prop_field:
+                    prop_name = prop_field.text()
+
+                    # Try to get the root object
+                    root_obj = self._get_root_object(obj_field, language)
+
+                    if root_obj:
+                        return f"{root_obj}.{prop_name}"
+                    else:
+                        return prop_name
+
+            elif language == 'go':
+                # For Go selector expressions
+                operand_field = member_node.field('operand')
+                field_field = member_node.field('field')
+
+                if operand_field and field_field:
+                    field_name = field_field.text()
+
+                    # Try to get the root object
+                    root_obj = self._get_root_object(operand_field, language)
+
+                    if root_obj:
+                        return f"{root_obj}.{field_name}"
+                    else:
+                        return field_name
+
+            # Fallback to text but clean it
+            text = member_node.text()
+            if text:
+                import re
+                text = re.sub(r'\s+', ' ', text).strip()
+                if len(text) > 100:
+                    return None
+                return text
+
+            return None
+        except Exception:
+            return None
+
+    def _get_root_object(self, obj_node, language: str) -> Optional[str]:
+        """Extract the root object from a potentially chained expression."""
+        try:
+            import re
+
+            # If it's a simple identifier or simple expression, use it
+            if obj_node.kind() in ('identifier', 'field_identifier'):
+                return obj_node.text()
+
+            # For call expressions, try to get the function being called
+            if obj_node.kind() == 'call':
+                func_field = obj_node.field('function')
+                if func_field:
+                    # Recursively get the root
+                    root = self._get_root_object(func_field, language)
+                    if root:
+                        return root
+                    # If no root found, try to extract something simple
+                    text = func_field.text()
+                    if text:
+                        text = re.sub(r'\s+', ' ', text).strip()
+                        # Extract first part (before first dot or paren)
+                        match = re.match(r'^([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)?)', text)
+                        if match:
+                            return match.group(1)
+
+            # For attribute/member expressions, get the root recursively
+            if obj_node.kind() == 'attribute':
+                obj_field = obj_node.field('object')
+                attr_field = obj_node.field('attribute')
+                if obj_field and attr_field:
+                    root = self._get_root_object(obj_field, language)
+                    if root:
+                        # If root is simple (one identifier), append this attribute
+                        if '.' not in root and '(' not in root:
+                            return f"{root}.{attr_field.text()}"
+                        # Otherwise just return the root
+                        return root
+
+            # For member expressions (JS), get the root recursively
+            if obj_node.kind() == 'member_expression':
+                obj_field = obj_node.field('object')
+                prop_field = obj_node.field('property')
+                if obj_field and prop_field:
+                    root = self._get_root_object(obj_field, language)
+                    if root:
+                        if '.' not in root and '(' not in root:
+                            return f"{root}.{prop_field.text()}"
+                        return root
+
+            # For selector expressions (Go), get the root recursively
+            if obj_node.kind() == 'selector_expression':
+                operand_field = obj_node.field('operand')
+                field_field = obj_node.field('field')
+                if operand_field and field_field:
+                    root = self._get_root_object(operand_field, language)
+                    if root:
+                        if '.' not in root and '(' not in root:
+                            return f"{root}.{field_field.text()}"
+                        return root
+
+            # Try to get simple text if it's short enough
+            text = obj_node.text()
+            if text:
+                text = re.sub(r'\s+', ' ', text).strip()
+                # Only use if reasonably short and simple
+                if len(text) <= 30 and '\n' not in text:
+                    return text
+
+            return None
         except Exception:
             return None
 
