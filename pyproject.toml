@@ -19,6 +19,7 @@ python-gitlab = "^4.4.0"
 pydantic-settings = "^2.7.1"
 setuptools = "^75.8.0"
 pygithub = "^2.5.0"
+ijson = "^3.4.0.post0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.4"
