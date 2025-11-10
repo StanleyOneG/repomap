@@ -227,9 +227,9 @@ class LazyRepoStructureModel(BaseModel):
     files: Dict[str, FileASTModel] = Field(default_factory=dict)
 
     # Store file path for lazy loading
-    _source_file_path: Optional[Path] = None
-    _loaded_files: set[str] = Field(default_factory=set, init=False)
-    _function_map: Optional[Dict[str, FunctionDetailsModel]] = Field(
+    source_file_path: Optional[Path] = None
+    loaded_files: set[str] = Field(default_factory=set, init=False)
+    function_map: Optional[Dict[str, FunctionDetailsModel]] = Field(
         default=None, init=False
     )
 
