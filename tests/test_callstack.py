@@ -511,9 +511,11 @@ def test_get_function_content_by_name_global(mock_repo_tree_file, mock_generator
         mock_repo_tree_file, "interpret_filename"
     )
     assert len(result) == 1
-    assert "global" in result
-    assert "int interpret_filename(const char *filename)" in result["global"]
-    assert "return err;" in result["global"]
+    # Key format is now "file_path:class_or_global"
+    expected_key = "alsalisp/alsalisp.c:global"
+    assert expected_key in result
+    assert "int interpret_filename(const char *filename)" in result[expected_key]
+    assert "return err;" in result[expected_key]
 
 
 def test_get_function_content_by_name_class_methods(
@@ -522,10 +524,11 @@ def test_get_function_content_by_name_class_methods(
     """Test getting class method content by name."""
     result = mock_generator.get_function_content_by_name(mock_repo_tree_file, "process")
     assert len(result) == 2
-    assert "ClassA" in result
-    assert "ClassB" in result
-    assert 'print("Processing in ClassA")' in result["ClassA"]
-    assert 'print("Processing in ClassB")' in result["ClassB"]
+    # Key format is now "file_path:class_or_global"
+    assert "src/classes.py:ClassA" in result
+    assert "src/classes.py:ClassB" in result
+    assert 'print("Processing in ClassA")' in result["src/classes.py:ClassA"]
+    assert 'print("Processing in ClassB")' in result["src/classes.py:ClassB"]
 
 
 def test_get_function_content_by_name_not_found(mock_repo_tree_file, mock_generator):
@@ -661,3 +664,170 @@ def test_get_function_content_go_method(mock_gitlab, generator):
     )  # Line inside SetEmail method
     assert "func (u *User) SetEmail(email string) {" in content
     assert "u.Email = email" in content
+
+
+# Mock data for testing multiple files with same function name
+MOCK_REPO_TREE_MULTIPLE_MAIN = {
+    "metadata": {"url": "https://example.com/group/repo", "ref": "main"},
+    "files": {
+        "examples/aud_db/getaudent_r.c": {
+            "language": "c",
+            "ast": {
+                "functions": {
+                    "main": {
+                        "name": "main",
+                        "start_line": 1,
+                        "end_line": 7,
+                        "class": None,
+                        "calls": ["fputaudent_r", "freeaudent_r"],
+                    }
+                }
+            },
+        },
+        "examples/aud_db/getaudtype_r.c": {
+            "language": "c",
+            "ast": {
+                "functions": {
+                    "main": {
+                        "name": "main",
+                        "start_line": 1,
+                        "end_line": 7,
+                        "class": None,
+                        "calls": ["fputaudent_r", "getaudtype_r"],
+                    }
+                }
+            },
+        },
+        "pam-modules/pam_aud/pam_aud.c": {
+            "language": "c",
+            "ast": {
+                "functions": {
+                    "pam_sm_open_session": {
+                        "name": "pam_sm_open_session",
+                        "start_line": 1,
+                        "end_line": 6,
+                        "class": None,
+                        "calls": ["parsec_enabled", "calculate_flags"],
+                    }
+                }
+            },
+        },
+    },
+}
+
+
+@pytest.fixture
+def mock_repo_tree_multiple_main_file(tmp_path):
+    """Create a mock repository tree file with multiple main functions."""
+    file_path = tmp_path / "repo_tree_multiple_main.json"
+    with open(file_path, "w") as f:
+        json.dump(MOCK_REPO_TREE_MULTIPLE_MAIN, f)
+    return str(file_path)
+
+
+@pytest.fixture
+def mock_generator_multiple_main(monkeypatch):
+    """Create a CallStackGenerator with mocked file content for multiple main test."""
+
+    def mock_get_file_content(self, file_url):
+        if "examples/aud_db/getaudent_r.c" in file_url:
+            return """int main(int argc, char *argv[])
+{
+    /* getaudent_r example */
+    fputaudent_r();
+    freeaudent_r();
+    return 0;
+}"""
+        elif "examples/aud_db/getaudtype_r.c" in file_url:
+            return """int main(int argc, char *argv[])
+{
+    /* getaudtype_r example */
+    fputaudent_r();
+    getaudtype_r();
+    return 0;
+}"""
+        elif "pam-modules/pam_aud/pam_aud.c" in file_url:
+            return """int pam_sm_open_session(pam_handle_t *pamh, int flags,
+                int argc, const char **argv)
+{
+    parsec_enabled();
+    calculate_flags();
+    return PAM_SUCCESS;
+}"""
+        return None
+
+    monkeypatch.setattr(CallStackGenerator, "_get_file_content", mock_get_file_content)
+    return CallStackGenerator()
+
+
+def test_get_function_content_by_name_multiple_files(
+    mock_repo_tree_multiple_main_file, mock_generator_multiple_main
+):
+    """Test getting function content when same function name exists in multiple files."""
+    result = mock_generator_multiple_main.get_function_content_by_name(
+        mock_repo_tree_multiple_main_file, "main"
+    )
+    # Should return both main functions from different files
+    assert len(result) == 2
+    assert "examples/aud_db/getaudent_r.c:global" in result
+    assert "examples/aud_db/getaudtype_r.c:global" in result
+    # Verify content from each file is different
+    assert "getaudent_r example" in result["examples/aud_db/getaudent_r.c:global"]
+    assert "getaudtype_r example" in result["examples/aud_db/getaudtype_r.c:global"]
+
+
+def test_get_function_content_by_name_with_file_path(
+    mock_repo_tree_multiple_main_file, mock_generator_multiple_main
+):
+    """Test getting function content with file_path to filter to specific file."""
+    # Search only in specific file
+    result = mock_generator_multiple_main.get_function_content_by_name(
+        mock_repo_tree_multiple_main_file,
+        "main",
+        file_path="examples/aud_db/getaudent_r.c",
+    )
+    # Should return only one main function from the specified file
+    assert len(result) == 1
+    assert "examples/aud_db/getaudent_r.c:global" in result
+    assert "getaudent_r example" in result["examples/aud_db/getaudent_r.c:global"]
+
+
+def test_get_function_content_by_name_with_file_path_not_found(
+    mock_repo_tree_multiple_main_file, mock_generator_multiple_main
+):
+    """Test error when file_path is not found in repository tree."""
+    with pytest.raises(ValueError, match="File not found in repository tree"):
+        mock_generator_multiple_main.get_function_content_by_name(
+            mock_repo_tree_multiple_main_file,
+            "main",
+            file_path="nonexistent/file.c",
+        )
+
+
+def test_get_function_content_by_name_with_file_path_function_not_found(
+    mock_repo_tree_multiple_main_file, mock_generator_multiple_main
+):
+    """Test error when function is not found in the specified file."""
+    with pytest.raises(
+        ValueError,
+        match="No function found with name: main in file: pam-modules/pam_aud/pam_aud.c",
+    ):
+        mock_generator_multiple_main.get_function_content_by_name(
+            mock_repo_tree_multiple_main_file,
+            "main",
+            file_path="pam-modules/pam_aud/pam_aud.c",
+        )
+
+
+def test_get_function_content_by_name_unique_function_with_file_path(
+    mock_repo_tree_multiple_main_file, mock_generator_multiple_main
+):
+    """Test getting a unique function with file_path specified."""
+    result = mock_generator_multiple_main.get_function_content_by_name(
+        mock_repo_tree_multiple_main_file,
+        "pam_sm_open_session",
+        file_path="pam-modules/pam_aud/pam_aud.c",
+    )
+    assert len(result) == 1
+    assert "pam-modules/pam_aud/pam_aud.c:global" in result
+    assert "pam_sm_open_session" in result["pam-modules/pam_aud/pam_aud.c:global"]

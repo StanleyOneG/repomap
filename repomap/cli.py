@@ -106,6 +106,11 @@ def parse_args(args=None) -> argparse.Namespace:  # noqa: C901
         "--repo-tree-path",
         help="Path to repository tree JSON file when using --print-function-by-name",
     )
+    parser.add_argument(
+        "--file-path",
+        help="File path within the repository to limit search (e.g., 'src/main.py'). "
+        "Used with --print-function-by-name to search only in a specific file.",
+    )
 
     args = parser.parse_args(args)
 
@@ -182,21 +187,37 @@ def main() -> Optional[int]:  # noqa: C901
                     return 0
                 else:
                     # Print function content by name
-                    logger.info(f"Getting function content for {args.name}")
+                    if args.file_path:
+                        logger.info(
+                            f"Getting function content for {args.name} "
+                            f"in file {args.file_path}"
+                        )
+                    else:
+                        logger.info(f"Getting function content for {args.name}")
                     function_contents = generator.get_function_content_by_name(
-                        args.repo_tree_path, args.name
+                        args.repo_tree_path, args.name, file_path=args.file_path
                     )
 
-                    # Print each function implementation with its class context
-                    for class_name, content in function_contents.items():
-                        if class_name == 'global':
-                            # For global functions (not in a class)
-                            print("Global function:")
-                            print(content)
+                    # Print each function implementation with its file and class context
+                    # Key format is "file_path:class_or_global"
+                    for key, content in function_contents.items():
+                        # Parse the key to extract file path and class/global
+                        if ':' in key:
+                            file_part, class_part = key.rsplit(':', 1)
                         else:
-                            # For class methods
-                            print(f"\nIn class {class_name}:")
-                            print(content)
+                            # Fallback for legacy format (shouldn't happen with new code)
+                            file_part = None
+                            class_part = key
+
+                        # Print location information
+                        if file_part:
+                            print(f"\nFile: {file_part}")
+
+                        if class_part == 'global':
+                            print("Global function:")
+                        else:
+                            print(f"In class {class_part}:")
+                        print(content)
                     return 0
             except ValueError as e:
                 error_msg = str(e)

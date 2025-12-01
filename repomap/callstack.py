@@ -173,18 +173,23 @@ class CallStackGenerator:
         self,
         ast_tree: str | dict,
         function_name: str,
+        file_path: Optional[str] = None,
     ) -> Dict[str, str]:
         """Get the content of a function by its name using the repository tree.
-        If multiple functions with the same name exist in different classes,
+        If multiple functions with the same name exist in different files or classes,
         returns content for all of them.
 
         Args:
             ast_tree: Path to the repository tree JSON file, Dictionary with repository tree itself
             function_name: Name of the function to find (without class prefix)
+            file_path: Optional file path to search in. If provided, only searches in that
+                      specific file. The path should match the key in the repo tree's files dict.
 
         Returns:
-            Dict[str, str]: Dictionary mapping class names (or 'global' for non-class functions)
-                           to function content strings
+            Dict[str, str]: Dictionary mapping keys to function content strings.
+                           Key format is "file_path:class_or_global" (e.g., "src/main.py:global"
+                           or "src/utils.py:ClassName") to handle functions with the same name
+                           in different files.
 
         Raises:
             ValueError: If no function is found with the given name
@@ -210,9 +215,19 @@ class CallStackGenerator:
             raise ValueError("Repository tree is missing ref in metadata")
         ref = repo_tree['metadata']['ref']
 
-        # Search for function in all files
+        # Determine which files to search
+        if file_path is not None:
+            # Search only in the specified file
+            if file_path not in repo_tree['files']:
+                raise ValueError(f"File not found in repository tree: {file_path}")
+            files_to_search = {file_path: repo_tree['files'][file_path]}
+        else:
+            # Search in all files
+            files_to_search = repo_tree['files']
+
+        # Search for function in selected files
         found_functions = {}
-        for file_path, file_data in repo_tree['files'].items():
+        for current_file_path, file_data in files_to_search.items():
             if 'ast' not in file_data or 'functions' not in file_data['ast']:
                 continue
 
@@ -222,7 +237,7 @@ class CallStackGenerator:
                 if func_info['name'] == function_name:
                     # Create file URL
                     file_url = (
-                        f"{repo_tree['metadata']['url']}/-/blob/{ref}/{file_path}"
+                        f"{repo_tree['metadata']['url']}/-/blob/{ref}/{current_file_path}"
                     )
                     lang = file_data['language']
 
@@ -231,11 +246,16 @@ class CallStackGenerator:
                         file_url, lang, start_line=func_info['start_line']
                     )
 
-                    # Use class name as key, or 'global' for functions not in a class
+                    # Use composite key: "file_path:class_or_global" for uniqueness
                     class_name = func_info['class'] if func_info['class'] else 'global'
-                    found_functions[class_name] = content
+                    key = f"{current_file_path}:{class_name}"
+                    found_functions[key] = content
 
         if not found_functions:
+            if file_path is not None:
+                raise ValueError(
+                    f"No function found with name: {function_name} in file: {file_path}"
+                )
             raise ValueError(f"No function found with name: {function_name}")
 
         return found_functions

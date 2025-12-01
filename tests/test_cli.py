@@ -268,8 +268,9 @@ def test_main_print_function(mock_generator):
 def test_main_print_function_by_name(mock_generator):
     """Test main function with print function by name."""
     mock_instance = MagicMock()
+    # Key format is now "file_path:class_or_global"
     mock_instance.get_function_content_by_name.return_value = {
-        "global": "def test(): pass"
+        "src/test.py:global": "def test(): pass"
     }
     mock_generator.return_value = mock_instance
 
@@ -289,6 +290,39 @@ def test_main_print_function_by_name(mock_generator):
     assert result == 0
     mock_generator.assert_called_once()
     mock_instance.get_function_content_by_name.assert_called_once()
+
+
+@patch('repomap.cli.CallStackGenerator')
+def test_main_print_function_by_name_with_file_path(mock_generator):
+    """Test main function with print function by name and file_path filter."""
+    mock_instance = MagicMock()
+    # Key format is "file_path:class_or_global"
+    mock_instance.get_function_content_by_name.return_value = {
+        "src/specific.py:global": "def test(): pass"
+    }
+    mock_generator.return_value = mock_instance
+
+    with patch(
+        'sys.argv',
+        [
+            'repomap',
+            '--print-function-by-name',
+            '--name',
+            'test',
+            '--repo-tree-path',
+            'tree.json',
+            '--file-path',
+            'src/specific.py',
+        ],
+    ):
+        result = main()
+
+    assert result == 0
+    mock_generator.assert_called_once()
+    # Verify file_path was passed to the method
+    mock_instance.get_function_content_by_name.assert_called_once_with(
+        'tree.json', 'test', file_path='src/specific.py'
+    )
 
 
 @pytest.mark.skip("Causes pytest hang - needs investigation")
